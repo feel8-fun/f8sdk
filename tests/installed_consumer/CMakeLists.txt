@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.20)
+project(installed_sdk_consumer LANGUAGES CXX)
+find_package(f8cppsdk CONFIG REQUIRED)
+add_executable(consumer main.cpp)
+target_link_libraries(consumer PRIVATE f8::f8cppsdk)
+enable_testing()
+add_test(NAME installed_sdk_consumer COMMAND consumer)

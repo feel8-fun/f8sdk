@@ -1,0 +1,9 @@
+.pixi/
+build/
+dist/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+CMakeUserPresets.json

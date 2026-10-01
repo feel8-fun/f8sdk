@@ -1,0 +1,70 @@
+name: SDK
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+concurrency:
+  group: sdk-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: prefix-dev/setup-pixi@v0.9.3
+        with:
+          pixi-version: v0.81.0
+          cache: true
+      - run: pixi run --locked contracts_check
+      - run: pixi run --locked lint
+      - run: pixi run --locked typecheck
+      - uses: actions/cache/restore@v5
+        id: conan-cache
+        with:
+          path: build/conan-cache
+          key: sdk-conan-${{ runner.os }}-${{ hashFiles('conan.lock', 'pixi.lock') }}
+      - name: Install locked native dependencies
+        env:
+          CONAN_HOME: ${{ github.workspace }}/build/conan-cache
+        run: |
+          pixi run --locked conan profile detect --force
+          pixi run --locked conan install . -of build/deps -s build_type=Release -s compiler.cppstd=17 --build=missing --lockfile conan.lock
+      - uses: actions/cache/save@v5
+        if: steps.conan-cache.outputs.cache-hit != 'true'
+        with:
+          path: build/conan-cache
+          key: ${{ steps.conan-cache.outputs.cache-primary-key }}
+      - name: Build SDK, tests, cross-language probe and example
+        shell: bash
+        run: |
+          sdk_toolchain=$(pixi run --locked python -c "from pathlib import Path; paths = list(Path('build/deps').rglob('conan_toolchain.cmake')); assert len(paths) == 1, paths; print(paths[0].resolve().as_posix())")
+          pixi run --locked cmake -S . -B build/native "-DCMAKE_TOOLCHAIN_FILE=$sdk_toolchain" -DCMAKE_BUILD_TYPE=Release -DF8SDK_BUILD_TESTS=ON -DF8SDK_BUILD_EXAMPLES=ON "-DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/build/sdk-install"
+          pixi run --locked cmake --build build/native --config Release --parallel 2
+          pixi run --locked cmake --build build/native --config Release --target f8cpp_crosslang_runtime_probe --parallel 2
+          pixi run --locked ctest --test-dir build/native -C Release --output-on-failure
+          pixi run --locked cmake --install build/native --config Release
+      - name: Python unit tests and real Python/C++ communication
+        shell: bash
+        run: |
+          probe_suffix=""
+          if [ "$RUNNER_OS" = "Windows" ]; then probe_suffix=".exe"; fi
+          export F8_CPP_RUNTIME_PROBE="${{ github.workspace }}/build/native/bin/f8cpp_crosslang_runtime_probe$probe_suffix"
+          pixi run --locked test
+      - name: Verify installed CMake SDK without Studio sources
+        shell: bash
+        run: |
+          sdk_toolchain=$(pixi run --locked python -c "from pathlib import Path; paths = list(Path('build/deps').rglob('conan_toolchain.cmake')); assert len(paths) == 1, paths; print(paths[0].resolve().as_posix())")
+          pixi run --locked cmake -S tests/installed_consumer -B build/consumer "-DCMAKE_TOOLCHAIN_FILE=$sdk_toolchain" "-DCMAKE_PREFIX_PATH=${{ github.workspace }}/build/sdk-install;${{ github.workspace }}/.pixi/envs/default;${{ github.workspace }}/.pixi/envs/default/Library" -DCMAKE_BUILD_TYPE=Release
+          pixi run --locked cmake --build build/consumer --config Release --parallel 2
+          pixi run --locked ctest --test-dir build/consumer -C Release --output-on-failure
+      - run: pixi run --locked wheel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-${{ runner.os }}
+          path: |
+            build/wheels/*.whl
+            build/sdk-install/
+          if-no-files-found: error

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/pyright/main/packages/pyright/schema/pyrightconfig.schema.json",
+  "pythonVersion": "3.14",
+  "include": [
+    "python/f8pysdk"
+  ],
+  "exclude": [
+    ".pixi",
+    "build",
+    "site",
+    "**/__pycache__",
+    "**/generated/**",
+    "**/tests/**"
+  ],
+  "typeCheckingMode": "standard",
+  "reportArgumentType": "error",
+  "reportAssignmentType": "error",
+  "reportCallIssue": "error",
+  "reportGeneralTypeIssues": "error",
+  "reportMissingTypeStubs": "none",
+  "reportOptionalMemberAccess": "error"
+}

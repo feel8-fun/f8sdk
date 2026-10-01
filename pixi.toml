@@ -1,0 +1,39 @@
+[workspace]
+name = "f8sdk"
+version = "0.1.0"
+authors = ["sis92 <feel8.fun@gmail.com>"]
+channels = ["conda-forge"]
+platforms = ["win-64", { name = "linux-glibc228", platform = "linux-64", glibc = "2.28" }]
+
+[dependencies]
+python = ">=3.14.3,<3.15"
+pip = ">=26,<27"
+pytest = ">=8.4.2,<9"
+hatchling = ">=1.28,<2"
+datamodel-code-generator = "==0.54.0"
+conan = ">=2.23,<3"
+cmake = ">=3.30,<5"
+ninja = ">=1.13,<2"
+pkg-config = ">=0.29,<1"
+libzenohc = ">=1.9.0,<1.10"
+libzenohcxx = ">=1.9.0,<1.10"
+gtest = ">=1.17,<2"
+
+[target.linux-64.dependencies]
+gxx_linux-64 = ">=11,<12"
+
+[pypi-dependencies]
+f8pysdk = { path = "python", editable = true }
+numpy = ">=2.4.2,<3"
+basedpyright = ">=1.31,<2"
+ruff = ">=0.12,<0.13"
+
+[tasks]
+test = "python -m pytest -q"
+lint = "ruff check python/f8pysdk tools"
+typecheck = "basedpyright -p pyrightconfig.json"
+codegen_py = "python tools/protocol_codegen_msgspec.py --protocol schemas/protocol.yml --output python/f8pysdk/generated/__init__.py"
+codegen_cpp = "python tools/gen_cpp_protocol_models.py --protocol schemas/protocol.yml --out cpp/include/f8cppsdk/generated/protocol_models.h"
+codegen = "python tools/generate_runtime_policy.py && python tools/generate_runtime_keys.py && python tools/generate_stream_wire.py && pixi run codegen_py && pixi run codegen_cpp"
+contracts_check = "python tools/protocol_codegen_msgspec.py --protocol schemas/protocol.yml --output python/f8pysdk/generated/__init__.py --check && python tools/gen_cpp_protocol_models.py --check && python tools/generate_runtime_policy.py --check && python tools/generate_runtime_keys.py --check && python tools/generate_stream_wire.py --check"
+wheel = "python -m pip wheel --no-deps --no-build-isolation -w build/wheels ./python"
