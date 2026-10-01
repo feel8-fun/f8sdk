@@ -13,8 +13,6 @@ The runtime is split into explicit owners:
 - intra-service state routing and cross-state watch lifecycle live behind `StateRouter`
 - a few top-level modules intentionally remain as ergonomic SDK entrypoints
 
-The long-term plan is tracked in `packages/f8pysdk/SDK_REFACTOR_PLAN.md`.
-
 ## Layered Modules
 
 - `data/`: data routing, buffering, local delivery, and cross-service data fanout

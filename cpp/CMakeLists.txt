@@ -59,6 +59,7 @@ add_dependencies(f8cppsdk f8cppsdk_check_stream_wire)
 
 find_package(nlohmann_json REQUIRED)
 find_package(spdlog REQUIRED)
+find_package(cxxopts REQUIRED)
 
 set(_f8_zenoh_link_targets "")
 if(F8_WITH_ZENOH)
@@ -98,6 +99,7 @@ target_link_libraries(f8cppsdk
   PUBLIC
     nlohmann_json::nlohmann_json
     spdlog::spdlog
+    cxxopts::cxxopts
     Threads::Threads
 )
 

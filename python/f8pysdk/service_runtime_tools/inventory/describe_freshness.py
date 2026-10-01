@@ -13,11 +13,13 @@ def source_fingerprint(service_dir: Path) -> str | None:
     field also invalidates the describe cache. No dependency on Git availability.
     """
     root = next((parent for parent in service_dir.resolve().parents
-                 if (parent / "pixi.toml").is_file() and (parent / "packages").is_dir()), None)
+                 if (parent / "pixi.toml").is_file()
+                 and ((parent / "packages").is_dir() or (parent / "extension.json").is_file())), None)
     if root is None:
         return None
     digest = hashlib.sha256()
-    for directory in (root / "packages", root / "schemas", root / "sdk/python", root / "sdk/cpp", root / "sdk/schemas", service_dir):
+    for directory in (root / "packages", root / "schemas", root / "sdk/python", root / "sdk/cpp", root / "sdk/schemas",
+                      root / ".sdk/python", root / ".sdk/cpp", root / ".sdk/schemas", service_dir):
         for parent, directories, files in directory.walk():
             directories[:] = sorted(name for name in directories
                                     if name not in {"tests", "node_modules", "build", "dist", "__pycache__", ".venv", ".git", ".pixi"})

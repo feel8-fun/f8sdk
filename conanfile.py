@@ -22,7 +22,6 @@ class F8Sdk(ConanFile):
     def requirements(self):
         self.requires("nlohmann_json/3.12.0")
         self.requires("spdlog/1.16.0")
-        self.requires("openssl/3.6.0")
         self.requires("cxxopts/3.3.1")
 
     def layout(self):
