@@ -46,3 +46,5 @@ extension integration tests; SDK CI owns unit tests and contract checks.
 The Studio HTTP/document schemas remain owned by Studio.
 
 Service configuration path roots are documented in [Service path references](docs/service-paths.md).
+
+Service, tool, skill, and resource declarations are documented in [Extension capabilities](docs/extension-capabilities.md).

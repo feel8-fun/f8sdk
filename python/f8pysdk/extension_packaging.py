@@ -17,8 +17,9 @@ import yaml
 
 from .codec import copy_model, validate_as
 from .extension_spec import ExtensionCatalog
+from .extension_capabilities import validate_capabilities
 from .monitoring import validate_describe_monitor_contract
-from .service_runtime_tools.inventory.index import index_paths, indexed_entry, read_service_index
+from .service_runtime_tools.inventory.index import ServiceIndex, index_paths, indexed_entry, read_service_index
 from .service_runtime_tools.inventory.entry import _absolutize_entry_paths
 from .specs import F8ServiceDescribe, F8ServiceEntry
 
@@ -26,11 +27,14 @@ from .specs import F8ServiceDescribe, F8ServiceEntry
 def validate_package(source: Path) -> ExtensionCatalog:
     catalog = msgspec.json.decode((source / 'extension.json').read_bytes(), type=ExtensionCatalog)
     index_path = source / 'config/service-index.json'
-    index = read_service_index(index_path)
+    index = (read_service_index(index_path) if index_path.is_file() else
+             ServiceIndex(schemaVersion='f8serviceIndex/1', services=(), modelRoot='${F8_MODEL_ROOT}'))
     paths = index_paths(index_path, index)
     owners = [service for extension in catalog.extensions for service in extension.service_classes]
     if not catalog.extensions or len(owners) != len(set(owners)) or set(owners) != {item.serviceClass for item in index.services}:
         raise ValueError('Extension ownership must match the service index exactly')
+    for extension in catalog.extensions:
+        validate_capabilities(extension, paths)
     ids = [extension.extension_id for extension in catalog.extensions]
     if len(ids) != len(set(ids)):
         raise ValueError('Duplicate extension ID')
@@ -74,6 +78,8 @@ def _extract_wheel(wheel: Path, destination: Path) -> None:
 def build_extension(source: Path, output: Path, *, wheel: Path | None = None, runtime_root: Path | None = None) -> Path:
     source = source.resolve()
     catalog = validate_package(source)
+    if not any(extension.service_classes for extension in catalog.extensions):
+        raise ValueError('The service builder requires services; package tool/skill assets directly into an extension ZIP')
     kinds = {extension.runtime.kind for extension in catalog.extensions}
     if kinds <= {'workspace', 'shared'}:
         python_package = True
