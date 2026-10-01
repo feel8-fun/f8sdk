@@ -18,13 +18,16 @@ import yaml
 from .codec import copy_model, validate_as
 from .extension_spec import ExtensionCatalog
 from .monitoring import validate_describe_monitor_contract
-from .service_runtime_tools.inventory.index import indexed_entry, read_service_index
+from .service_runtime_tools.inventory.index import index_paths, indexed_entry, read_service_index
+from .service_runtime_tools.inventory.entry import _absolutize_entry_paths
 from .specs import F8ServiceDescribe, F8ServiceEntry
 
 
 def validate_package(source: Path) -> ExtensionCatalog:
     catalog = msgspec.json.decode((source / 'extension.json').read_bytes(), type=ExtensionCatalog)
-    index = read_service_index(source / 'config/service-index.json')
+    index_path = source / 'config/service-index.json'
+    index = read_service_index(index_path)
+    paths = index_paths(index_path, index)
     owners = [service for extension in catalog.extensions for service in extension.service_classes]
     if not catalog.extensions or len(owners) != len(set(owners)) or set(owners) != {item.serviceClass for item in index.services}:
         raise ValueError('Extension ownership must match the service index exactly')
@@ -33,16 +36,19 @@ def validate_package(source: Path) -> ExtensionCatalog:
         raise ValueError('Duplicate extension ID')
     for item in index.services:
         for relative in item.manifests.values():
-            path = (source / 'config' / relative).resolve()
+            path = paths.package_path(relative, relative_to=index_path.parent)
             if not path.is_relative_to(source.resolve()) or not path.is_file():
                 raise ValueError(f'Missing or unsafe service metadata: {relative}')
-        for relative in item.manifests.values():
-            entry = validate_as(F8ServiceEntry, yaml.safe_load((source / 'config' / relative).read_text()))
+        for platform, relative in item.manifests.items():
+            manifest = paths.package_path(relative, relative_to=index_path.parent)
+            entry = validate_as(F8ServiceEntry, yaml.safe_load(manifest.read_text()))
             if entry.serviceClass != item.serviceClass:
                 raise ValueError(f'Service manifest disagrees with index: {relative}')
             if entry.launch.command in {'pixi', 'pixi.exe'}:
                 raise ValueError(f'Extension must declare its own module/executable, not a superbuild task: {relative}')
-        describe_path = (source / 'config' / item.describe).resolve()
+            _absolutize_entry_paths(entry, service_dir=manifest.parent,
+                                    paths=index_paths(index_path, index, item, platform=platform))
+        describe_path = paths.package_path(item.describe, relative_to=index_path.parent)
         if not describe_path.is_relative_to(source.resolve()):
             raise ValueError(f'Unsafe service description path: {item.describe}')
         if describe_path.is_file():
@@ -103,6 +109,8 @@ def build_extension(source: Path, output: Path, *, wheel: Path | None = None, ru
             if any(sys.platform not in item.manifests and 'any' not in item.manifests for item in index.services):
                 raise ValueError(f'Native service package does not support {sys.platform}')
             index = copy_model(index, update={'services': tuple(copy_model(item, update={
+                'bundleRoots': {platform: reference for platform, reference in item.bundleRoots.items()
+                                if platform in {sys.platform, 'any'}},
                 'manifests': {platform: relative for platform, relative in item.manifests.items()
                               if platform in {sys.platform, 'any'}},
             }) for item in index.services)})
@@ -166,7 +174,7 @@ def _refresh_describes(stage: Path, *, python_package: bool) -> None:
         if describe.service.serviceClass != item.serviceClass:
             raise ValueError(f'Built service class mismatch: {item.serviceClass}')
         validate_describe_monitor_contract(payload)
-        describe_path = index_path.parent / item.describe
+        describe_path = index_paths(index_path, index, item).package_path(item.describe, relative_to=index_path.parent)
         describe_path.parent.mkdir(parents=True, exist_ok=True)
         describe_path.write_bytes(msgspec.json.encode(describe))
 

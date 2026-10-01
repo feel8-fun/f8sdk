@@ -6,12 +6,12 @@ from pathlib import Path
 import sys
 
 
-def model_root() -> Path:
-    configured = os.environ.get("F8_MODEL_ROOT")
+def resource_root() -> Path:
+    configured = os.environ.get("F8_RESOURCE_ROOT")
     if configured:
         path = Path(configured).expanduser()
         if not path.is_absolute():
-            raise ValueError("F8_MODEL_ROOT must be absolute")
+            raise ValueError("F8_RESOURCE_ROOT must be absolute")
         return path
     if sys.platform == "win32":
         base = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local")))
@@ -19,7 +19,17 @@ def model_root() -> Path:
         base = Path.home() / "Library" / "Application Support"
     else:
         base = Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local" / "share")))
-    return base / "f8studio" / "models"
+    return base / "f8studio"
+
+
+def model_root() -> Path:
+    configured = os.environ.get("F8_MODEL_ROOT")
+    if configured:
+        path = Path(configured).expanduser()
+        if not path.is_absolute():
+            raise ValueError("F8_MODEL_ROOT must be absolute")
+        return path
+    return resource_root() / "models"
 
 
 def service_config_root() -> Path:

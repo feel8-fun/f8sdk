@@ -44,3 +44,5 @@ Keep dependencies on the public `f8pysdk`/`f8cppsdk` APIs rather than source pat
 Studio includes this repository as the `sdk/` submodule. Its CI owns Studio and
 extension integration tests; SDK CI owns unit tests and contract checks.
 The Studio HTTP/document schemas remain owned by Studio.
+
+Service configuration path roots are documented in [Service path references](docs/service-paths.md).

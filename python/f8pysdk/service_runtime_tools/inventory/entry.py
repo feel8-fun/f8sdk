@@ -12,6 +12,7 @@ import msgspec
 
 from f8pysdk.codec import dump_json, validate_as
 from f8pysdk.specs import F8ServiceEntry, F8ServiceLaunchSpec
+from f8pysdk.service_paths import ServicePaths
 
 _YAML_SAFE_LOADER = yaml.SafeLoader
 logger = logging.getLogger(__name__)
@@ -81,10 +82,17 @@ def find_service_dirs(roots: Iterable[Path]) -> list[Path]:
     return sorted(found)
 
 
-def _absolutize_entry_paths(entry: F8ServiceEntry, *, service_dir: Path) -> F8ServiceEntry:
+def _absolutize_entry_paths(
+    entry: F8ServiceEntry, *, service_dir: Path, paths: ServicePaths | None = None,
+) -> F8ServiceEntry:
     launch = entry.launch
     workdir_raw = str(launch.workdir or "./")
-    workdir_path = Path(workdir_raw).expanduser()
+    if paths is not None:
+        workdir_path = paths.resolve(workdir_raw, relative_to=service_dir)
+    elif "${" in workdir_raw:
+        raise ValueError("Service path references require an explicit service index/path context")
+    else:
+        workdir_path = Path(workdir_raw).expanduser()
     if not workdir_path.is_absolute():
         workdir_path = (service_dir / workdir_path).resolve()
     else:
@@ -92,6 +100,11 @@ def _absolutize_entry_paths(entry: F8ServiceEntry, *, service_dir: Path) -> F8Se
 
     command = launch.command
     command_raw = str(command or "").strip()
+    if "${" in command_raw:
+        if paths is None:
+            raise ValueError("Service path references require an explicit service index/path context")
+        command = str(paths.resolve(command_raw, relative_to=workdir_path))
+        command_raw = command
     try:
         command_path = Path(command_raw).expanduser()
         looks_like_path = bool(command_raw) and (
@@ -102,10 +115,20 @@ def _absolutize_entry_paths(entry: F8ServiceEntry, *, service_dir: Path) -> F8Se
     except _ENTRY_PATH_ERRORS as exc:
         logger.debug("service entry command path absolutization failed command=%s", command_raw, exc_info=exc)
 
+    args = launch.args
+    env = launch.env
+    if paths is not None:
+        if isinstance(args, list):
+            args = [str(paths.resolve(value, relative_to=workdir_path)) if "${" in value else value for value in args]
+        env = {key: str(paths.resolve(value, relative_to=workdir_path)) if "${" in value else value
+               for key, value in (launch.env or {}).items()}
+        # Resolved installation registrations retain their original payload roots.
+        for key, value in paths.environment().items():
+            env.setdefault(key, value)
     absolute_launch = F8ServiceLaunchSpec(
         command=command,
-        args=launch.args,
-        env=launch.env,
+        args=args,
+        env=env,
         workdir=str(workdir_path),
     )
     return F8ServiceEntry(
