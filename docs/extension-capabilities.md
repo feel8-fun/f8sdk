@@ -20,4 +20,6 @@ The process writes diagnostic logs to stderr and one JSON result to stdout:
 
 Studio owns task persistence, cancellation, execution deadlines, bounded output, and Agent approval. Tools and assets become available only while their extension is installed and enabled. Tool-side idempotence, previews, external installation records, and domain-specific skills belong to each extension implementation.
 
-The SDK service builder still produces service wheel/runtime payloads. For tool/skill-only extensions, package the declared files directly into an extension ZIP containing `config/extensions.json`. Studio accepts these archives without requiring dummy services or nodes.
+The SDK extension builder supports Python tool-only wheel payloads as well as service packages. Tool-only packages may omit the service index; describe generation is skipped. Skill/resource-only packages can be archived directly with `config/extensions.json`. Studio accepts these archives without requiring dummy services or nodes.
+
+`timeoutSeconds: null` declares a persistent tool with no automatic deadline. Studio retains its running job until explicit cancellation or shutdown. The default is still 300 seconds. `allowConcurrent: true` allows different tools in the same extension to run together only when all active tools opt in; launching the same tool twice is rejected. Tools default to exclusive execution.

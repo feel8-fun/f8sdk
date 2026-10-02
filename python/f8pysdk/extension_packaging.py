@@ -78,8 +78,6 @@ def _extract_wheel(wheel: Path, destination: Path) -> None:
 def build_extension(source: Path, output: Path, *, wheel: Path | None = None, runtime_root: Path | None = None) -> Path:
     source = source.resolve()
     catalog = validate_package(source)
-    if not any(extension.service_classes for extension in catalog.extensions):
-        raise ValueError('The service builder requires services; package tool/skill assets directly into an extension ZIP')
     kinds = {extension.runtime.kind for extension in catalog.extensions}
     if kinds <= {'workspace', 'shared'}:
         python_package = True
@@ -138,7 +136,8 @@ def build_extension(source: Path, output: Path, *, wheel: Path | None = None, ru
                 if directory not in copied:
                     shutil.copytree(original, directory)
                     copied.add(directory)
-        _refresh_describes(stage, python_package=python_package)
+        if any(extension.service_classes for extension in catalog.extensions):
+            _refresh_describes(stage, python_package=python_package)
         output.parent.mkdir(parents=True, exist_ok=True)
         temporary_archive = output.with_suffix('.zip.tmp')
         with zipfile.ZipFile(temporary_archive, 'w', compression=zipfile.ZIP_DEFLATED) as archive:

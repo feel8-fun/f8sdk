@@ -35,8 +35,9 @@ class ExtensionTool(msgspec.Struct, frozen=True, kw_only=True, rename='camel', f
     workdir: str = '${F8_PACKAGE_ROOT}'
     fields: tuple[ExtensionToolField, ...] = ()
     platforms: tuple[Literal['linux', 'win32', 'darwin'], ...] = ()
-    timeout_seconds: int = 300
+    timeout_seconds: int | None = 300
     requires_confirmation: bool = True
+    allow_concurrent: bool = False
 
 
 class ExtensionSkill(msgspec.Struct, frozen=True, kw_only=True, rename='camel', forbid_unknown_fields=True):

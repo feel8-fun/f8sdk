@@ -22,7 +22,7 @@ def validate_capabilities(manifest: ExtensionManifest, paths: ServicePaths) -> N
         if not path.is_file():
             raise ValueError(f'Missing capability asset: {asset.path}')
     for tool in manifest.tools:
-        if not tool.command or not 1 <= tool.timeout_seconds <= 3600:
+        if not tool.command or (tool.timeout_seconds is not None and not 1 <= tool.timeout_seconds <= 3600):
             raise ValueError(f'Invalid tool launcher: {tool.tool_id}')
         cwd = paths.package_path(tool.workdir, relative_to=paths.package_root)
         if manifest.runtime.kind == 'native':
