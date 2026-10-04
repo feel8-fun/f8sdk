@@ -17,7 +17,7 @@ from f8pysdk.monitoring import validate_describe_monitor_contract
 from f8pysdk.service_paths import ServicePaths
 
 from .catalog import ServiceCatalog
-from .entry import _absolutize_entry_paths, _read_yaml
+from .entry import absolutize_entry_paths, _read_yaml
 from .policy import merge_disabled_service_classes
 
 
@@ -83,7 +83,7 @@ def indexed_entry(index_path: Path, index: ServiceIndex, item: IndexedService) -
     entry = validate_as(F8ServiceEntry, _read_yaml(manifest))
     if entry.serviceClass != item.serviceClass:
         raise ValueError(f"Service class mismatch in {manifest}")
-    entry = _absolutize_entry_paths(entry, service_dir=manifest.parent, paths=paths)
+    entry = absolutize_entry_paths(entry, service_dir=manifest.parent, paths=paths)
     env = dict(entry.launch.env or {})
     # The installer owns resource resolution, independent of the service cwd.
     env["F8_MODEL_ROOT"] = str(paths.model_root)

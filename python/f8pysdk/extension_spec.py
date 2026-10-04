@@ -15,6 +15,9 @@ class ExtensionRuntime(msgspec.Struct, frozen=True, kw_only=True, rename='camel'
     environment: str | None = None
     requires_python: str | None = None
     dependencies: tuple[str, ...] = ()
+    provider_id: str | None = None
+    provider_version: str | None = None
+    abi: str | None = None
 
 
 class ExtensionToolField(msgspec.Struct, frozen=True, kw_only=True, rename='camel', forbid_unknown_fields=True):

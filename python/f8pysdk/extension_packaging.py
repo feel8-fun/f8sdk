@@ -14,18 +14,25 @@ import zipfile
 
 import msgspec
 import yaml
+from packaging.utils import parse_wheel_filename
+from packaging.tags import sys_tags
+
+from .release_spec import PublishedArtifact
+from .runtime_package import validate_runtime_package
 
 from .codec import copy_model, validate_as
 from .extension_spec import ExtensionCatalog
 from .extension_capabilities import validate_capabilities
 from .monitoring import validate_describe_monitor_contract
 from .service_runtime_tools.inventory.index import ServiceIndex, index_paths, indexed_entry, read_service_index
-from .service_runtime_tools.inventory.entry import _absolutize_entry_paths
+from .service_runtime_tools.inventory.entry import absolutize_entry_paths
 from .specs import F8ServiceDescribe, F8ServiceEntry
 
 
 def validate_package(source: Path) -> ExtensionCatalog:
     catalog = msgspec.json.decode((source / 'extension.json').read_bytes(), type=ExtensionCatalog)
+    if len(catalog.extensions) != 1:
+        raise ValueError('An extension package must own exactly one extension')
     index_path = source / 'config/service-index.json'
     index = (read_service_index(index_path) if index_path.is_file() else
              ServiceIndex(schemaVersion='f8serviceIndex/1', services=(), modelRoot='${F8_MODEL_ROOT}'))
@@ -50,7 +57,7 @@ def validate_package(source: Path) -> ExtensionCatalog:
                 raise ValueError(f'Service manifest disagrees with index: {relative}')
             if entry.launch.command in {'pixi', 'pixi.exe'}:
                 raise ValueError(f'Extension must declare its own module/executable, not a superbuild task: {relative}')
-            _absolutize_entry_paths(entry, service_dir=manifest.parent,
+            absolutize_entry_paths(entry, service_dir=manifest.parent,
                                     paths=index_paths(index_path, index, item, platform=platform))
         describe_path = paths.package_path(item.describe, relative_to=index_path.parent)
         if not describe_path.is_relative_to(source.resolve()):
@@ -79,16 +86,24 @@ def build_extension(source: Path, output: Path, *, wheel: Path | None = None, ru
     source = source.resolve()
     catalog = validate_package(source)
     kinds = {extension.runtime.kind for extension in catalog.extensions}
-    if kinds <= {'workspace', 'shared'}:
+    if kinds <= {'workspace', 'shared', 'pixi'}:
         python_package = True
     elif kinds == {'native'}:
         python_package = False
     else:
-        raise ValueError('This builder accepts native services or Python services sharing official presets')
+        raise ValueError('This builder accepts native services or managed Python services')
     if python_package != (wheel is not None):
         raise ValueError('Python extensions require --wheel; native extensions must not supply one')
     if python_package and any(extension.runtime.environment is None for extension in catalog.extensions):
-        raise ValueError('Python extensions must declare an official preset environment')
+        raise ValueError('Python extensions must declare their runtime environment')
+    if kinds == {'workspace'} and runtime_root is None:
+        from .extension_runtime_build import build_source_runtime
+
+        assert wheel is not None
+        with tempfile.TemporaryDirectory(prefix='f8-extension-runtime-') as temporary:
+            runtime = build_source_runtime(source, Path(temporary).resolve(), wheel.resolve(), catalog.extensions[0])
+            return build_extension(source, output, wheel=wheel, runtime_root=runtime)
+    private_runtime = kinds == {'pixi'} or (kinds == {'workspace'} and runtime_root is not None)
     with tempfile.TemporaryDirectory(prefix='f8-extension-') as temporary:
         # Windows temp directories may use an 8.3 alias or a junction. Resolve
         # the root just as indexed_entry resolves every service workdir.
@@ -99,12 +114,54 @@ def build_extension(source: Path, output: Path, *, wheel: Path | None = None, ru
         published = copy_model(catalog, update={
             'preinstalled': (),
             'extensions': tuple(copy_model(extension, update={
-                'runtime': copy_model(extension.runtime, update={'kind': 'shared'})
+                'runtime': copy_model(extension.runtime, update={'kind': 'pixi' if private_runtime else 'shared'})
             }) if extension.runtime.kind == 'workspace' else extension for extension in catalog.extensions),
         })
         (stage / 'config/extensions.json').write_bytes(msgspec.json.encode(published))
+        tags = tuple(sorted(str(tag) for tag in parse_wheel_filename(wheel.name)[3])) if wheel is not None else ()
+        if wheel is not None and not set(tags).intersection(str(tag) for tag in sys_tags()):
+            raise ValueError('Extension wheel is incompatible with the publisher interpreter')
+        if len(published.extensions) == 1:
+            extension = published.extensions[0]
+            platform = ('any' if wheel is not None and not private_runtime and all(tag.endswith('-any') for tag in tags)
+                        else 'windows-x86_64' if sys.platform == 'win32' else 'linux-x86_64')
+            if platform != 'any' and sys.platform not in {'linux', 'win32'}:
+                raise ValueError(f'Unsupported extension release platform: {sys.platform}')
+            (stage / 'config/artifact.json').write_bytes(msgspec.json.encode(PublishedArtifact(
+                schema_version='f8artifact/1', artifact_id=extension.extension_id, version=extension.version,
+                kind='extension', platform=platform, wheel_tags=tags,
+            )))
         if wheel is not None:
             _extract_wheel(wheel, stage / 'python')
+            if private_runtime:
+                if kinds not in ({'pixi'}, {'workspace'}) or runtime_root is None:
+                    raise ValueError('Independent Pixi extensions require a single runtime kind and --runtime-root')
+                runtime_root = runtime_root.resolve()
+                runtimes = validate_runtime_package(runtime_root)
+                declared = {extension.runtime.environment for extension in catalog.extensions}
+                if not declared <= {item.runtime_id for item in runtimes.runtimes}:
+                    raise ValueError('Extension default environment must be declared in its published runtime workspace')
+                locked_wheels: list[Path] = []
+                for definition in runtimes.runtimes:
+                    workspace = runtime_root / definition.manifest.removeprefix('${F8_PACKAGE_ROOT}/')
+                    lock = yaml.safe_load(workspace.with_name('pixi.lock').read_text(encoding='utf-8'))
+                    locked_wheels.extend(workspace.parent / entry['pypi'] for entry in lock['packages']
+                                         if isinstance(entry.get('pypi'), str) and '://' not in entry['pypi'])
+                digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
+                if not any(path.name == wheel.name and hashlib.sha256(path.read_bytes()).hexdigest() == digest
+                           for path in locked_wheels):
+                    raise ValueError('Extension wheel must be part of its published runtime lock')
+                shutil.copytree(runtime_root, stage / 'runtime-definition',
+                    ignore=shutil.ignore_patterns('.git', '.pixi', '__pycache__'))
+                relocated = copy_model(runtimes, update={'runtimes': tuple(copy_model(item, update={
+                    'manifest': '${F8_PACKAGE_ROOT}/runtime-definition/' + item.manifest.removeprefix('${F8_PACKAGE_ROOT}/'),
+                }) for item in runtimes.runtimes)})
+                (stage / 'config/runtime-environments.json').write_bytes(msgspec.json.encode(relocated))
+                for item in relocated.runtimes:
+                    subprocess.run(['pixi', 'lock', '--manifest-path', str(stage / item.manifest.removeprefix('${F8_PACKAGE_ROOT}/')),
+                                    '--check'], check=True)
+            elif runtime_root is not None:
+                raise ValueError('Shared Python extensions must not embed a private runtime')
         else:
             if runtime_root is None:
                 raise ValueError('Native extensions require --runtime-root with deployed runtime dependencies')

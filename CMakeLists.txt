@@ -36,3 +36,5 @@ endif()
 if(F8SDK_BUILD_EXAMPLES)
     add_subdirectory(cpp/examples/minimal_service)
 endif()
+
+install(FILES "${F8SDK_ROOT}/LICENSE" DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/f8sdk")

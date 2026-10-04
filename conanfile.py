@@ -5,7 +5,7 @@ from conan.tools.cmake import CMake, cmake_layout
 class F8Sdk(ConanFile):
     name = "f8cppsdk"
     version = "0.1.0"
-    license = "AGPL-3.0-only"
+    license = "Apache-2.0"
     url = "https://github.com/feel8-fun/f8sdk"
     description = "Feel8 C++ service runtime and communication SDK"
     package_type = "library"

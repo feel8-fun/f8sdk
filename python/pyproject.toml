@@ -3,9 +3,12 @@ name = "f8pysdk"
 version = "0.1.0"
 description = "Feel8 service runtime, transport and extension SDK"
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = [
     "msgspec>=0.18.6",
+    "packaging>=25,<27",
     "eclipse-zenoh>=1.9.0,<1.10",
     "msgpack>=1.0",
     "pyyaml>=6.0.3,<7",

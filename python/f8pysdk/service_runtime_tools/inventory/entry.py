@@ -82,7 +82,7 @@ def find_service_dirs(roots: Iterable[Path]) -> list[Path]:
     return sorted(found)
 
 
-def _absolutize_entry_paths(
+def absolutize_entry_paths(
     entry: F8ServiceEntry, *, service_dir: Path, paths: ServicePaths | None = None,
 ) -> F8ServiceEntry:
     launch = entry.launch
@@ -206,7 +206,7 @@ def load_service_entry(service_dir: Path) -> F8ServiceEntry:
     except _ENTRY_VALIDATION_ERRORS as exc:
         raise ValueError(f"Invalid service entry in {service_dir}: {exc}") from exc
 
-    return _absolutize_entry_paths(entry, service_dir=service_dir)
+    return absolutize_entry_paths(entry, service_dir=service_dir)
 
 
 __all__ = ["find_service_dirs", "load_service_entry"]

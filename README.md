@@ -48,3 +48,12 @@ The Studio HTTP/document schemas remain owned by Studio.
 Service configuration path roots are documented in [Service path references](docs/service-paths.md).
 
 Service, tool, skill, and resource declarations are documented in [Extension capabilities](docs/extension-capabilities.md).
+
+## License
+
+The Python and C++ SDKs, schemas and generators are licensed under
+Apache-2.0; see [LICENSE](LICENSE). Extension authors may distribute their
+extensions under their own licenses, including proprietary licenses, while
+complying with the SDK license and licenses of their other dependencies.
+Protocol compatibility is independent of extension licensing. Studio and
+official extension repositories retain their respective licenses.
