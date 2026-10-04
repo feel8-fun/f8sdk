@@ -71,7 +71,7 @@ class _ServiceBusNode(StatefulNode, BusAttachableNode, Protocol):
     """
 
 
-class ServiceBusComponentFactory(Protocol):
+class ServiceBusApplicationFactory(Protocol):
     """
     Explicit component builder for `ServiceBus` owner subsystems.
 
@@ -121,7 +121,7 @@ class ServiceBusComponentFactory(Protocol):
 
 
 @dataclass(frozen=True)
-class DefaultServiceBusComponentFactory:
+class DefaultServiceBusApplicationFactory:
     def create_data_router(
         self,
         *,
@@ -193,7 +193,7 @@ class ServiceBus:
         config: ServiceBusConfig,
         *,
         transport: RuntimeTransport | None = None,
-        component_factory: ServiceBusComponentFactory | None = None,
+        component_factory: ServiceBusApplicationFactory | None = None,
     ) -> None:
         config = config.normalized()
         self._config = config
@@ -250,7 +250,7 @@ class ServiceBus:
         self._rungraph_status_key = runtime_keys.rungraph_status(self.service_id)
         self._ready_key = runtime_keys.ready(self.service_id)
         self._control_endpoints: ServiceControlEndpointServer | None = None
-        self._component_factory = component_factory if component_factory is not None else DefaultServiceBusComponentFactory()
+        self._component_factory = component_factory if component_factory is not None else DefaultServiceBusApplicationFactory()
 
         self._data_router = self._component_factory.create_data_router(
             bus=self,

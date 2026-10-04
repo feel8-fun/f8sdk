@@ -7,12 +7,12 @@ longer a public barrel.
 from __future__ import annotations
 
 from .service_bus.config import BusBackend, ServiceBusConfig
-from .service_bus.runtime import DefaultServiceBusComponentFactory, ServiceBus, ServiceBusComponentFactory
+from .service_bus.runtime import DefaultServiceBusApplicationFactory, ServiceBus, ServiceBusApplicationFactory
 
 __all__ = [
-    "DefaultServiceBusComponentFactory",
+    "DefaultServiceBusApplicationFactory",
     "BusBackend",
     "ServiceBus",
-    "ServiceBusComponentFactory",
+    "ServiceBusApplicationFactory",
     "ServiceBusConfig",
 ]

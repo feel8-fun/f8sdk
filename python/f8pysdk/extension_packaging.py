@@ -30,7 +30,10 @@ from .specs import F8ServiceDescribe, F8ServiceEntry
 
 
 def validate_package(source: Path) -> ExtensionCatalog:
-    catalog = msgspec.json.decode((source / 'extension.json').read_bytes(), type=ExtensionCatalog)
+    catalog_path = source / 'extension.json'
+    if not catalog_path.is_file():
+        catalog_path = source / 'config/extensions.json'
+    catalog = msgspec.json.decode(catalog_path.read_bytes(), type=ExtensionCatalog)
     if len(catalog.extensions) != 1:
         raise ValueError('An extension package must own exactly one extension')
     index_path = source / 'config/service-index.json'
@@ -82,9 +85,18 @@ def _extract_wheel(wheel: Path, destination: Path) -> None:
         archive.extractall(destination)
 
 
-def build_extension(source: Path, output: Path, *, wheel: Path | None = None, runtime_root: Path | None = None) -> Path:
+def build_extension(source: Path, output: Path, *, wheel: Path | None = None, runtime_root: Path | None = None,
+                    web_assets: Path | None = None) -> Path:
     source = source.resolve()
     catalog = validate_package(source)
+    if catalog.extensions[0].application is not None:
+        from .application_packaging import build_application
+        if wheel is None:
+            raise ValueError('Application extensions require their backend wheel')
+        platform = 'windows-x86_64' if sys.platform == 'win32' else 'linux-x86_64'
+        return build_application(source, wheel, output, runtime_root=runtime_root, web_assets=web_assets, platform=platform)
+    if web_assets is not None:
+        raise ValueError('Frontend assets require an application extension')
     kinds = {extension.runtime.kind for extension in catalog.extensions}
     if kinds <= {'workspace', 'shared', 'pixi'}:
         python_package = True
@@ -248,6 +260,7 @@ def main() -> None:
     parser.add_argument('--wheel', type=Path)
     parser.add_argument('--wheel-dir', type=Path)
     parser.add_argument('--runtime-root', type=Path)
+    parser.add_argument('--web-assets', type=Path)
     parser.add_argument('--check', action='store_true')
     args = parser.parse_args()
     if args.wheel_dir is not None:
@@ -258,7 +271,7 @@ def main() -> None:
     if args.check:
         validate_package(args.source)
     elif args.output is not None:
-        print(build_extension(args.source, args.output, wheel=args.wheel, runtime_root=args.runtime_root))
+        print(build_extension(args.source, args.output, wheel=args.wheel, runtime_root=args.runtime_root, web_assets=args.web_assets))
     else:
         parser.error('--output or --check is required')
 

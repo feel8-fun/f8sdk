@@ -43,7 +43,7 @@ class F8VariantRecord(Struct, kw_only=True):
     tags: list[str] | UnsetType = field(default_factory=list)
 
 
-class F8ComponentRecord(Struct, kw_only=True, forbid_unknown_fields=True):
+class F8ApplicationRecord(Struct, kw_only=True, forbid_unknown_fields=True):
     componentId: str
     name: str
     content: dict[str, F8JsonValue]
@@ -1464,7 +1464,7 @@ __all__ = [
     "F8VariantKind",
     "F8VariantRef",
     "F8VariantRecord",
-    "F8ComponentRecord",
+    "F8ApplicationRecord",
     "SchemaVersion",
     "Entry",
     "F8VariantLibrary",

@@ -8,7 +8,7 @@ from .service_paths import ServicePaths
 
 
 def validate_capabilities(manifest: ExtensionManifest, paths: ServicePaths) -> None:
-    if not (manifest.service_classes or manifest.tools or manifest.skills or manifest.resources):
+    if not (manifest.service_classes or manifest.tools or manifest.skills or manifest.resources or manifest.application):
         raise ValueError(f'Extension has no capabilities: {manifest.extension_id}')
     for identifiers in (tuple(tool.tool_id for tool in manifest.tools),
                         tuple(skill.skill_id for skill in manifest.skills),

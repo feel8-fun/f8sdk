@@ -6,6 +6,7 @@ from typing import Literal
 import msgspec
 
 from .specs import F8JsonValue
+from .application_spec import ApplicationSpec
 
 RuntimeKind = Literal['native', 'bundled', 'workspace', 'pixi', 'shared']
 
@@ -65,6 +66,7 @@ class ExtensionManifest(msgspec.Struct, frozen=True, kw_only=True, rename='camel
     resources: tuple[ExtensionResource, ...] = ()
     runtime: ExtensionRuntime = ExtensionRuntime()
     model_directories: tuple[str, ...] = ()
+    application: ApplicationSpec | None = None
 
 
 class ExtensionCatalog(msgspec.Struct, frozen=True, kw_only=True, rename='camel', forbid_unknown_fields=True):

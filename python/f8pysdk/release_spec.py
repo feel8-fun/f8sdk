@@ -14,13 +14,6 @@ class ReleaseArtifact(msgspec.Struct, frozen=True, kw_only=True, rename='camel',
     sha256: str
 
 
-class StudioReleaseLock(msgspec.Struct, frozen=True, kw_only=True, rename='camel', forbid_unknown_fields=True):
-    schema_version: Literal['f8studioRelease/1']
-    platform: Literal['linux-x86_64', 'windows-x86_64']
-    artifacts: tuple[ReleaseArtifact, ...]
-    base_runtime: str = 'studio-runtime'
-
-
 class RuntimeDefinition(msgspec.Struct, frozen=True, kw_only=True, rename='camel', forbid_unknown_fields=True):
     runtime_id: str
     manifest: str
@@ -52,3 +45,11 @@ class BundledExtensionPackage(msgspec.Struct, frozen=True, kw_only=True, rename=
 class BundledExtensionCatalog(msgspec.Struct, frozen=True, kw_only=True, rename='camel', forbid_unknown_fields=True):
     schema_version: Literal['f8extensionPackages/1']
     packages: tuple[BundledExtensionPackage, ...]
+
+
+class PlatformReleaseLock(msgspec.Struct, frozen=True, kw_only=True, rename='camel', forbid_unknown_fields=True):
+    schema_version: Literal['f8platformRelease/1']
+    platform: Literal['linux-x86_64', 'windows-x86_64']
+    artifacts: tuple[ReleaseArtifact, ...]
+    base_runtime: str = 'platform-runtime'
+    startup: tuple[str, ...] = ('webstudio',)
