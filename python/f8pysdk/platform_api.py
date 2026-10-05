@@ -1,9 +1,9 @@
 """Public request contracts for the authenticated launcher API."""
 from pydantic import BaseModel, ConfigDict
+import msgspec
 
 
-class ImportApplication(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+class ImportApplication(msgspec.Struct, frozen=True, kw_only=True, forbid_unknown_fields=True):
     location: str
     sha256: str
 
@@ -13,8 +13,10 @@ class ApplicationConfiguration(BaseModel):
     endpoints: dict[str, str]
 
 
-class ApplicationVersion(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+class ApplicationVersion(msgspec.Struct, frozen=True, kw_only=True, forbid_unknown_fields=True):
     sha256: str
 
 
+class PlatformStartup(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    applications: tuple[str, ...]

@@ -17,6 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 media = ["httpx>=0.28,<1"]
 platform-api = ["pydantic>=2.11,<3"]
+platform-client = ["httpx>=0.28,<1"]
 
 [build-system]
 requires = ["hatchling"]
