@@ -8,7 +8,7 @@ import pytest
 
 from f8pysdk.service_runtime_tools.inventory.catalog import ServiceCatalog
 from f8pysdk.service_runtime_tools.inventory.discovery import load_discovery_into_catalog
-from f8pysdk.service_runtime_tools.inventory.index import load_index_into_catalog
+from f8pysdk.service_runtime_tools.inventory.index import index_paths, load_index_into_catalog, read_service_index
 
 
 def make_index(root: Path) -> Path:
@@ -54,6 +54,25 @@ def test_index_is_relocatable(tmp_path: Path) -> None:
     catalog = ServiceCatalog()
     load_index_into_catalog(path=tmp_path / "after" / "index.json", catalog=catalog)
     assert catalog.service_entry("test.service").launch.workdir == str(tmp_path / "after")
+
+
+def test_generated_index_can_declare_its_source_package_root(tmp_path: Path) -> None:
+    source = tmp_path / 'source'
+    path = make_index(source)
+    raw = json.loads(path.read_text())
+    raw['packageRoot'] = str(source)
+    raw['services'][0]['manifests']['any'] = '${F8_PACKAGE_ROOT}/service.yml'
+    raw['services'][0]['describe'] = '${F8_PACKAGE_ROOT}/describe.json'
+    generated = source / 'build/workspace/config/service-index.json'
+    generated.parent.mkdir(parents=True)
+    generated.write_text(json.dumps(raw))
+    catalog = ServiceCatalog()
+    assert load_index_into_catalog(path=generated, catalog=catalog) == ['test.service']
+    assert index_paths(generated, read_service_index(generated)).package_root == source
+    raw['packageRoot'] = '../source'
+    generated.write_text(json.dumps(raw))
+    with pytest.raises(ValueError, match='packageRoot must be absolute'):
+        index_paths(generated, read_service_index(generated))
 
 
 def test_disabled_service_environment_still_filters_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

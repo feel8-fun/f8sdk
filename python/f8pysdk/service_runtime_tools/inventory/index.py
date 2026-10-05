@@ -32,6 +32,7 @@ class ServiceIndex(msgspec.Struct, frozen=True, kw_only=True, forbid_unknown_fie
     schemaVersion: Literal["f8serviceIndex/1"]
     services: tuple[IndexedService, ...]
     modelRoot: str
+    packageRoot: str | None = None
 
 
 def default_service_index() -> Path:
@@ -40,9 +41,10 @@ def default_service_index() -> Path:
         return Path(configured).expanduser().resolve()
     # Checkout and unpacked distribution roots; no recursive service discovery.
     for root in Path(__file__).resolve().parents:
-        candidate = root / "config" / "service-index.json"
-        if candidate.is_file():
-            return candidate
+        for relative in ("config/service-index.json", "build/workspace/config/service-index.json"):
+            candidate = root / relative
+            if candidate.is_file():
+                return candidate
     raise FileNotFoundError("No service index installed. Set F8_SERVICE_INDEX to config/service-index.json.")
 
 
@@ -66,6 +68,11 @@ def index_paths(
 ) -> ServicePaths:
     index_path = index_path.resolve()
     paths = ServicePaths.for_index(index_path)
+    if index.packageRoot is not None:
+        package = Path(index.packageRoot).expanduser()
+        if not package.is_absolute():
+            raise ValueError('Service index packageRoot must be absolute')
+        paths = replace(paths, package_root=package.resolve())
     paths = replace(paths, model_root=paths.resolve(index.modelRoot, relative_to=index_path.parent))
     if item is not None:
         bundle = item.bundleRoots.get(sys.platform if platform is None else platform, item.bundleRoots.get("any"))
