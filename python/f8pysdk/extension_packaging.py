@@ -78,7 +78,7 @@ def _extract_wheel(wheel: Path, destination: Path) -> None:
     with zipfile.ZipFile(wheel) as archive:
         for info in archive.infolist():
             path = destination / info.filename
-            if not path.resolve().is_relative_to(destination.resolve()) or '\\' in info.filename:
+            if not path.resolve().is_relative_to(destination.resolve()) or '\\' in info.orig_filename:
                 raise ValueError(f'Unsafe wheel path: {info.filename}')
             if '.data' in Path(info.filename).parts[0]:
                 raise ValueError(f'Extension wheel must contain importable modules only: {info.filename}')
