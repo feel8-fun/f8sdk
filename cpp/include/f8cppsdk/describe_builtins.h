@@ -8,7 +8,8 @@ namespace f8::cppsdk {
 //
 // Supported input shapes:
 // - f8describe/1 payload: {"service": {...}, "operators": [...]}
-// - f8service/1 payload:  {"serviceClass": "...", ...}
+// - f8service/1 or /2 payload: {"serviceClass": "...", ...}
+// Output service/operator definitions use /2 and explicit state policies.
 //
 // Builtins:
 // - service: active and svcId states, and monitor data output

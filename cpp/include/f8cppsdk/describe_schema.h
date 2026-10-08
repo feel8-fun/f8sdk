@@ -52,6 +52,8 @@ nlohmann::json state_field(
     std::string description = {},
     bool show_on_node = false,
     nlohmann::json control = nullptr,
-    bool redact_on_publish = false);
+    bool redact_on_publish = false,
+    bool persistent = true,
+    bool publishable = true);
 
 }  // namespace f8::cppsdk::describe

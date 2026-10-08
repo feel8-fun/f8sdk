@@ -171,10 +171,13 @@ json audio_chunk_port(std::string name, std::string description, bool definition
 }
 
 json state_field(std::string name, const json& value_schema, std::string access, std::string label,
-                 std::string description, bool show_on_node, json control, bool redact_on_publish) {
+                 std::string description, bool show_on_node, json control, bool redact_on_publish, bool persistent, bool publishable) {
   json sf;
   sf["name"] = std::move(name);
   sf["valueSchema"] = value_schema;
+  const bool saved = persistent && access != "ro";
+  sf["persistent"] = saved;
+  sf["publishable"] = saved && publishable && !redact_on_publish;
   sf["access"] = std::move(access);
   sf["valueRequired"] = true;
   if (!label.empty()) {

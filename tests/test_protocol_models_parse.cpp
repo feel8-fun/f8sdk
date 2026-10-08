@@ -234,3 +234,23 @@ TEST(DescribeSchema, StateControlsRequireStructuredMetadata) {
   const nlohmann::json control{{"kind", "text"}};
   EXPECT_EQ(state_field("url", schema_string(), "rw", "", "", true, control)["control"], control);
 }
+
+TEST(DescribeSchema, PersistenceAndPublicationAreIndependentOfRuntimeAccess) {
+  using namespace f8::cppsdk::describe;
+  const auto local = state_field("path", json{{"type", "string"}, {"default", "example.mp4"}}, "rw", "", "", false, nullptr, false, true, false);
+  EXPECT_EQ(local["persistent"], true);
+  EXPECT_EQ(local["publishable"], false);
+  EXPECT_EQ(local["valueSchema"]["default"], "example.mp4");
+  const auto transient = state_field("volume", schema_number(1.0, 0.0, 1.0), "rw", "", "", false, nullptr, false, false, false);
+  EXPECT_EQ(transient["persistent"], false);
+  EXPECT_EQ(transient["publishable"], false);
+  const auto observed = state_field("duration", schema_number(), "ro");
+  EXPECT_EQ(observed["persistent"], false);
+  EXPECT_EQ(observed["publishable"], false);
+  EXPECT_EQ(state_field("token", schema_string(), "rw", "", "", false, nullptr, true)["publishable"], false);
+  F8StateSpec parsed;
+  ParseError error;
+  ASSERT_TRUE(parse_F8StateSpec(transient, parsed, error)) << error.message;
+  ASSERT_TRUE(parsed.persistent.has_value());
+  EXPECT_FALSE(*parsed.persistent);
+}

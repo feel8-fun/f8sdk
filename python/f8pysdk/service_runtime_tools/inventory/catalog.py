@@ -29,8 +29,8 @@ class ServiceSpecRegistry:
         except msgspec.ValidationError as exc:
             raise ValueError(str(exc)) from exc
 
-        if validated.schemaVersion != F8ServiceSchemaVersion.f8service_1:
-            raise ValueError(f"schemaVersion must be {F8ServiceSchemaVersion.f8service_1}")
+        if validated.schemaVersion not in (F8ServiceSchemaVersion.f8service_1, F8ServiceSchemaVersion.f8service_2):
+            raise ValueError("schemaVersion must be f8service/1 or f8service/2")
 
         self._specs[validated.serviceClass] = validated
         return validated
@@ -80,8 +80,8 @@ class OperatorSpecRegistry:
         except msgspec.ValidationError as exc:
             raise ValueError(str(exc)) from exc
 
-        if validated.schemaVersion != F8OperatorSchemaVersion.f8operator_1:
-            raise ValueError(f"schemaVersion must be {F8OperatorSchemaVersion.f8operator_1}")
+        if validated.schemaVersion not in (F8OperatorSchemaVersion.f8operator_1, F8OperatorSchemaVersion.f8operator_2):
+            raise ValueError("schemaVersion must be f8operator/1 or f8operator/2")
 
         self._specs[(validated.serviceClass, validated.operatorClass)] = validated
         return validated

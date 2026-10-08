@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-POLICY: dict[str, Any] = {'collections': {'services': {'sort': ['serviceId', 'serviceClass'], 'omit': []}, 'nodes': {'sort': ['serviceId', 'nodeId', 'operatorClass'], 'omit': ['stateValues']}, 'edges': {'sort': ['kind', 'fromServiceId', 'fromOperatorId', 'fromPort', 'toServiceId', 'toPort'], 'omit': ['edgeId']}}, 'node_sorted_strings': ['execInPorts', 'execOutPorts'], 'node_named_specs': {'dataInPorts': {'omit': ['definitionProtected'], 'omit_defaults': {'showOnNode': True}}, 'dataOutPorts': {'omit': ['definitionProtected'], 'omit_defaults': {'showOnNode': True}}, 'stateFields': {'omit': ['control'], 'omit_defaults': {'showOnNode': False, 'redactOnPublish': False}}}, 'spec_sort': ['name', 'type', 'access']}
+POLICY: dict[str, Any] = {'collections': {'services': {'sort': ['serviceId', 'serviceClass'], 'omit': []}, 'nodes': {'sort': ['serviceId', 'nodeId', 'operatorClass'], 'omit': ['stateValues']}, 'edges': {'sort': ['kind', 'fromServiceId', 'fromOperatorId', 'fromPort', 'toServiceId', 'toPort'], 'omit': ['edgeId']}}, 'node_sorted_strings': ['execInPorts', 'execOutPorts'], 'node_named_specs': {'dataInPorts': {'omit': ['definitionProtected'], 'omit_defaults': {'showOnNode': True}}, 'dataOutPorts': {'omit': ['definitionProtected'], 'omit_defaults': {'showOnNode': True}}, 'stateFields': {'omit': ['control', 'persistent', 'publishable'], 'omit_defaults': {'showOnNode': False, 'redactOnPublish': False}}}, 'spec_sort': ['name', 'type', 'access']}
 
 def _sort_key(value: Any, fields: list[str]) -> tuple[str, ...]:
     if not isinstance(value, dict):

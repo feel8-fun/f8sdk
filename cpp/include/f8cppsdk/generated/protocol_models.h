@@ -311,14 +311,16 @@ inline void to_json(nlohmann::json& j, F8MonitorSnapshot_schemaVersion_Enum v) {
   }
   throw std::invalid_argument("invalid enum value");
 }
-enum class F8OperatorSchemaVersion { f8operator_1 };
+enum class F8OperatorSchemaVersion { f8operator_1, f8operator_2 };
 inline std::optional<F8OperatorSchemaVersion> parse_F8OperatorSchemaVersion(const std::string& s) {
   if (s == "f8operator/1") return F8OperatorSchemaVersion::f8operator_1;
+  if (s == "f8operator/2") return F8OperatorSchemaVersion::f8operator_2;
   return std::nullopt;
 }
 inline void to_json(nlohmann::json& j, F8OperatorSchemaVersion v) {
   switch (v) {
     case F8OperatorSchemaVersion::f8operator_1: j="f8operator/1"; return;
+    case F8OperatorSchemaVersion::f8operator_2: j="f8operator/2"; return;
   }
   throw std::invalid_argument("invalid enum value");
 }
@@ -333,14 +335,16 @@ inline void to_json(nlohmann::json& j, F8ServiceEntrySchemaVersion v) {
   }
   throw std::invalid_argument("invalid enum value");
 }
-enum class F8ServiceSchemaVersion { f8service_1 };
+enum class F8ServiceSchemaVersion { f8service_1, f8service_2 };
 inline std::optional<F8ServiceSchemaVersion> parse_F8ServiceSchemaVersion(const std::string& s) {
   if (s == "f8service/1") return F8ServiceSchemaVersion::f8service_1;
+  if (s == "f8service/2") return F8ServiceSchemaVersion::f8service_2;
   return std::nullopt;
 }
 inline void to_json(nlohmann::json& j, F8ServiceSchemaVersion v) {
   switch (v) {
     case F8ServiceSchemaVersion::f8service_1: j="f8service/1"; return;
+    case F8ServiceSchemaVersion::f8service_2: j="f8service/2"; return;
   }
   throw std::invalid_argument("invalid enum value");
 }
@@ -1034,6 +1038,8 @@ struct F8StateSpec {
   std::optional<std::string> description{};
   F8DataTypeSchema valueSchema{};
   F8StateAccess access{};
+  std::optional<bool> persistent{};
+  std::optional<bool> publishable{};
   std::optional<bool> valueRequired{};
   std::optional<F8StateFieldEditPolicy> editPolicy{};
   std::optional<F8UiControlSpec> control{};
@@ -4226,6 +4232,16 @@ inline bool decode_value(const nlohmann::json& j, F8StateSpec& out, ParseError& 
     if (!decode_value(j["access"],value.access,e)) { e.message="access"+std::string(": ")+e.message; return false; }
   }
   else return invalid(e,"missing required field: access");
+  if (j.contains("persistent")) {
+    bool decoded{};
+    if (!decode_value(j["persistent"],decoded,e)) { e.message="persistent"+std::string(": ")+e.message; return false; }
+    value.persistent=std::move(decoded);
+  }
+  if (j.contains("publishable")) {
+    bool decoded{};
+    if (!decode_value(j["publishable"],decoded,e)) { e.message="publishable"+std::string(": ")+e.message; return false; }
+    value.publishable=std::move(decoded);
+  }
   if (j.contains("valueRequired")) {
     bool decoded{};
     if (!decode_value(j["valueRequired"],decoded,e)) { e.message="valueRequired"+std::string(": ")+e.message; return false; }
@@ -4256,7 +4272,7 @@ inline bool decode_value(const nlohmann::json& j, F8StateSpec& out, ParseError& 
     if (!decode_value(j["editorAssist"],decoded,e)) { e.message="editorAssist"+std::string(": ")+e.message; return false; }
     value.editorAssist=std::move(decoded);
   }
-  for (const auto& item : j.items()) if (item.key() != "name" && item.key() != "label" && item.key() != "description" && item.key() != "valueSchema" && item.key() != "access" && item.key() != "valueRequired" && item.key() != "editPolicy" && item.key() != "control" && item.key() != "showOnNode" && item.key() != "redactOnPublish" && item.key() != "editorAssist") return invalid(e,"unknown field: "+item.key());
+  for (const auto& item : j.items()) if (item.key() != "name" && item.key() != "label" && item.key() != "description" && item.key() != "valueSchema" && item.key() != "access" && item.key() != "persistent" && item.key() != "publishable" && item.key() != "valueRequired" && item.key() != "editPolicy" && item.key() != "control" && item.key() != "showOnNode" && item.key() != "redactOnPublish" && item.key() != "editorAssist") return invalid(e,"unknown field: "+item.key());
   out=std::move(value); return true;
 }
 inline bool parse_F8StateSpec(const nlohmann::json& j, F8StateSpec& out, ParseError& e) { return decode_value(j,out,e); }
@@ -4267,6 +4283,8 @@ inline void to_json(nlohmann::json& j, const F8StateSpec& value) {
   if (value.description) j["description"]=wire_json(*value.description);
   j["valueSchema"]=wire_json(value.valueSchema);
   j["access"]=wire_json(value.access);
+  if (value.persistent) j["persistent"]=wire_json(*value.persistent);
+  if (value.publishable) j["publishable"]=wire_json(*value.publishable);
   if (value.valueRequired) j["valueRequired"]=wire_json(*value.valueRequired);
   if (value.editPolicy) j["editPolicy"]=wire_json(*value.editPolicy);
   if (value.control) j["control"]=wire_json(*value.control);

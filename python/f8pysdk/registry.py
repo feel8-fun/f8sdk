@@ -9,6 +9,7 @@ from ._specs.builtin_fields import (
     upsert_builtin_state_fields_for_operator_spec,
     upsert_builtin_state_fields_for_service_spec,
 )
+from ._specs.state_policy import normalize_spec_policy
 from .generated import F8OperatorSpec, F8RuntimeNode, F8ServiceDescribe, F8ServiceSpec
 from .codec import copy_model
 from .nodes import OperatorNode, RuntimeNode, ServiceNode
@@ -133,7 +134,8 @@ class RuntimeNodeRegistry:
             for operator_spec in list((self._operator_specs.get(normalized_service_class) or {}).values())
         ]
         self._inject_builtin_state_fields(copied_service_spec, copied_operator_specs)
-        return F8ServiceDescribe(service=copied_service_spec, operators=copied_operator_specs)
+        return F8ServiceDescribe(service=normalize_spec_policy(copied_service_spec),
+                                operators=[normalize_spec_policy(spec) for spec in copied_operator_specs])
 
     @staticmethod
     def _inject_builtin_state_fields(service_spec: F8ServiceSpec, operator_specs: list[F8OperatorSpec]) -> None:

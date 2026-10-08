@@ -62,6 +62,7 @@ from ._specs.schema import (
     video_frame_metadata_schema,
     video_frame_port,
 )
+from ._specs.state_policy import normalize_spec_policy, normalize_state_policy, state_is_persistent, state_is_publishable
 from .generated import (
     UNSET,
     AccessMode,
@@ -350,6 +351,8 @@ __all__ = [
     "is_value_required_state_field",
     "json_data_port",
     "number_schema",
+    "normalize_spec_policy",
+    "normalize_state_policy",
     "operator_state_fields_with_builtins",
     "palette_category_from_spec",
     "service_state_fields_with_builtins",
@@ -359,6 +362,8 @@ __all__ = [
     "spec_kind_from_mapping",
     "spec_kind_from_spec",
     "string_schema",
+    "state_is_persistent",
+    "state_is_publishable",
     "video_frame_metadata_schema",
     "video_frame_port",
 ]

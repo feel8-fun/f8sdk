@@ -6,7 +6,7 @@
 #include <nlohmann/json.hpp>
 namespace f8::cppsdk::wire_policy {
 using json = nlohmann::json;
-inline const json& policy() { static const json value = json::parse(R"F8POLICY({"collections":{"services":{"sort":["serviceId","serviceClass"],"omit":[]},"nodes":{"sort":["serviceId","nodeId","operatorClass"],"omit":["stateValues"]},"edges":{"sort":["kind","fromServiceId","fromOperatorId","fromPort","toServiceId","toPort"],"omit":["edgeId"]}},"node_sorted_strings":["execInPorts","execOutPorts"],"node_named_specs":{"dataInPorts":{"omit":["definitionProtected"],"omit_defaults":{"showOnNode":true}},"dataOutPorts":{"omit":["definitionProtected"],"omit_defaults":{"showOnNode":true}},"stateFields":{"omit":["control"],"omit_defaults":{"showOnNode":false,"redactOnPublish":false}}},"spec_sort":["name","type","access"]})F8POLICY"); return value; }
+inline const json& policy() { static const json value = json::parse(R"F8POLICY({"collections":{"services":{"sort":["serviceId","serviceClass"],"omit":[]},"nodes":{"sort":["serviceId","nodeId","operatorClass"],"omit":["stateValues"]},"edges":{"sort":["kind","fromServiceId","fromOperatorId","fromPort","toServiceId","toPort"],"omit":["edgeId"]}},"node_sorted_strings":["execInPorts","execOutPorts"],"node_named_specs":{"dataInPorts":{"omit":["definitionProtected"],"omit_defaults":{"showOnNode":true}},"dataOutPorts":{"omit":["definitionProtected"],"omit_defaults":{"showOnNode":true}},"stateFields":{"omit":["control","persistent","publishable"],"omit_defaults":{"showOnNode":false,"redactOnPublish":false}}},"spec_sort":["name","type","access"]})F8POLICY"); return value; }
 inline std::vector<std::string> sort_key(const json& value, const json& fields) {
   std::vector<std::string> key;
   for (const auto& field : fields) {

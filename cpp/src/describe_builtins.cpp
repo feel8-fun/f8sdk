@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_set>
+#include <stdexcept>
 
 #include "f8cppsdk/describe_schema.h"
 
@@ -141,6 +142,17 @@ json monitor_port_spec() {
   };
 }
 
+void normalize_state_policy(json& field) {
+  const bool readonly = field.value("access", std::string()) == "ro";
+  const bool persistent = field.value("persistent", !readonly);
+  const bool publishable = field.value("publishable", persistent && !field.value("redactOnPublish", false));
+  if ((readonly && (persistent || publishable)) || (!persistent && publishable)) {
+    throw std::invalid_argument("inconsistent persistence/publication policy for state " + field.value("name", std::string()));
+  }
+  field["persistent"] = persistent;
+  field["publishable"] = publishable && !field.value("redactOnPublish", false);
+}
+
 void upsert_builtin_state_fields(json& spec, const bool is_service) {
   json filtered = json::array();
   std::unordered_set<std::string> blocked{"svcId", "operatorId"};
@@ -169,6 +181,10 @@ void upsert_builtin_state_fields(json& spec, const bool is_service) {
   }
 
   spec["stateFields"] = std::move(filtered);
+  for (auto& field : spec["stateFields"]) {
+    normalize_state_policy(field);
+  }
+  spec["schemaVersion"] = is_service ? "f8service/2" : "f8operator/2";
 }
 
 void upsert_builtin_data_out_ports(json& spec) {

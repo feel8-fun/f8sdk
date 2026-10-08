@@ -1,7 +1,7 @@
 openapi: "3.1.0"
 info:
   title: Feel8 Schemas
-  version: 1.0.0
+  version: 1.1.0
   description: Single OpenAPI spec for multi-language model codegen and schema validation.
 
 paths:
@@ -405,6 +405,12 @@ components:
             - ro
             - wo
           description: rw=mutable, ro=read-only, wo=write-only (no fanout)
+        persistent:
+          type: boolean
+          description: Save this state's configured value in the local project. False means runtime only. When omitted, writable fields are persistent and read-only fields are not.
+        publishable:
+          type: boolean
+          description: Allow the saved value in reusable components and shared graphs. False excludes the value, not the field definition. Runtime state broadcasting is unaffected. When omitted, persistent fields are publishable unless redactOnPublish is true.
         valueRequired:
           type: boolean
           default: false
@@ -1300,6 +1306,7 @@ components:
           type: string
           enum:
             - f8service/1
+            - f8service/2
         serviceClass:
           type: string
           description: Slash-separated id, e.g., f8/engine. Avoid dots so identifiers remain URL and key-expression friendly.
@@ -1392,6 +1399,7 @@ components:
           type: string
           enum:
             - f8operator/1
+            - f8operator/2
         operatorClass:
           type: string
           description:
