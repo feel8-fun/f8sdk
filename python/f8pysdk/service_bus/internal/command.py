@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any, TYPE_CHECKING
 
 from ...capabilities import CommandableNode
@@ -15,8 +15,8 @@ from ...command import (
     command_output_state_field,
 )
 from ...generated import F8Command, F8OperatorSpec, F8ServiceSpec
-from ...state import StateWriteOrigin, StateWriteSource
-from .logging import log_error_once
+from ...state import StateWriteSource
+from .logging import ErrorReporter, log_error_once
 
 if TYPE_CHECKING:
     from ..runtime import ServiceBus
@@ -158,8 +158,10 @@ def build_command_output_meta(*, command_name: str, command_input_field: str) ->
 
 
 class CommandGateway:
-    def __init__(self, *, bus: "ServiceBus", nodes: dict[str, Any]) -> None:
-        self._bus = bus
+    def __init__(self, *, nodes: dict[str, Any], error_reporter: ErrorReporter,
+                 output_writer: Callable[[str, str, Any, int | None, dict[str, Any]], Awaitable[None]]) -> None:
+        self.error_reporter = error_reporter
+        self._output_writer = output_writer
         self._nodes = nodes
         self._input_bindings: dict[tuple[str, str], CommandBinding] = {}
         self._output_bindings: dict[tuple[str, str], CommandBinding] = {}
@@ -197,23 +199,12 @@ class CommandGateway:
         ts_ms: int | None,
         meta: dict[str, Any] | None,
     ) -> None:
-        from ..state.pipeline import publish_state
-
         binding = self.output_binding(node_id=str(node_id), call=str(call))
         if binding is None:
             return
         payload_meta = dict(meta or {})
         payload_meta.setdefault("command", str(call))
-        await publish_state(
-            self._bus,
-            binding.node_id,
-            binding.output_field,
-            result,
-            origin=StateWriteOrigin.runtime,
-            source=StateWriteSource.cmd,
-            ts_ms=ts_ms,
-            meta=payload_meta,
-        )
+        await self._output_writer(binding.node_id, binding.output_field, result, ts_ms, payload_meta)
 
     async def invoke(
         self,
@@ -224,10 +215,10 @@ class CommandGateway:
         invoke_options = options if options is not None else CommandInvokeOptions()
         node_id = str(invocation.node_id)
         call = str(invocation.call or "").strip()
-        service_node = self._bus.get_node(node_id)
+        service_node = self._nodes.get(node_id)
         if service_node is None or not isinstance(service_node, CommandableNode):
             log_error_once(
-                self._bus,
+                self,
                 key=f"command_execute_missing_target:{node_id}:{call}",
                 message=f"command target missing or not commandable: {node_id}.{call}",
             )
@@ -247,7 +238,7 @@ class CommandGateway:
             result = await service_node.on_command(call, normalized.args, meta=dict(invoke_options.call_meta))  # type: ignore[misc]
         except Exception as exc:
             log_error_once(
-                self._bus,
+                self,
                 key=f"command_execute_failed:{node_id}:{call}:{type(exc).__name__}:{exc}",
                 message=f"command dispatch failed for {node_id}.{call}",
                 exc=exc,
@@ -268,7 +259,7 @@ class CommandGateway:
                 )
             except Exception as exc:
                 log_error_once(
-                    self._bus,
+                    self,
                     key=f"command_output_writeback_failed:{node_id}:{call}:{type(exc).__name__}:{exc}",
                     message=f"command output writeback failed for {node_id}.{call}",
                     exc=exc,

@@ -28,10 +28,11 @@ from ..zenoh_transport import ZenohTransport, ZenohTransportConfig
 from ..state import StateRead, StateWriteOrigin, StateWriteSource
 from ..time_utils import now_ms
 from .config import ServiceBusConfig, _debug_state_enabled
-from .data.router import DataRouter
+from .data.router import DataRouteMetrics, DataRouter
 from .internal.command import CommandGateway, CommandInvocation, CommandInvokeOptions
 from ..monitoring import MonitorCollector, MonitorCollectorConfig
 from .state.pipeline import publish_state as _publish_state_impl
+from .internal.logging import ErrorReporter
 from .state.router import StateRouter
 from .state.store import RetainedStateReader, StateStore
 from .workflow.lifecycle import set_active as _set_active_impl
@@ -137,6 +138,18 @@ class DefaultServiceBusComponentFactory:
     ) -> DataRouter:
         return DataRouter(
             bus,
+            transport=bus._transport,
+            metrics=DataRouteMetrics(
+                record_emit=bus._monitor_record_emit,
+                record_wait=bus._monitor_record_wait,
+                record_input=bus._monitor_record_input,
+                record_drop=bus._monitor_record_drop,
+                record_local_only_emit=bus._monitor_record_local_only_emit,
+                record_routed_cross_emit=bus._monitor_record_routed_cross_emit,
+                record_suppressed_cross_publish=bus._monitor_record_suppressed_cross_publish,
+                record_callback_delivery=bus._monitor_record_callback_delivery,
+                record_buffer_pull_delivery=bus._monitor_record_buffer_pull_delivery,
+            ),
             cross_publish_policy=cross_publish_policy,
             data_delivery=data_delivery,
             input_max_buffers=input_max_buffers,
@@ -161,7 +174,7 @@ class DefaultServiceBusComponentFactory:
         bus: "ServiceBus",
         store: StateStore,
     ) -> StateRouter:
-        return StateRouter(bus, store=store)
+        return StateRouter(bus, store=store, transport=bus._transport, debug=bus._debug_state, sync_concurrency=bus._state_sync_concurrency)
 
     def create_command_gateway(
         self,
@@ -169,7 +182,11 @@ class DefaultServiceBusComponentFactory:
         bus: "ServiceBus",
         nodes: dict[str, _ServiceBusNode],
     ) -> CommandGateway:
-        return CommandGateway(bus=bus, nodes=nodes)
+        async def write_output(node_id: str, field: str, value: Any, ts_ms: int | None, meta: dict[str, Any]) -> None:
+            await _publish_state_impl(bus, node_id, field, value, origin=StateWriteOrigin.runtime,
+                                      source=StateWriteSource.cmd, ts_ms=ts_ms, meta=meta)
+
+        return CommandGateway(nodes=nodes, error_reporter=bus.error_reporter, output_writer=write_output)
 
     def create_monitor_collector(
         self,
@@ -256,15 +273,7 @@ class ServiceBus:
         self._control_endpoints: ServiceControlEndpointServer | None = None
         self._component_factory = component_factory if component_factory is not None else DefaultServiceBusComponentFactory()
 
-        self._data_router = self._component_factory.create_data_router(
-            bus=self,
-            cross_publish_policy=cross_publish_policy,
-            data_delivery=mode,
-            input_max_buffers=self._data_input_max_buffers,
-            default_queue_size=self._data_input_default_queue_size,
-            output_debug_max_ports=self._data_output_debug_max_ports,
-            output_debug_history_size=self._data_output_debug_history_size,
-        )
+        self.error_reporter = ErrorReporter(service_id=self.service_id, report=self._report_bus_error)
         self._state_store = self._component_factory.create_state_store(
             service_id=self.service_id,
             reader=self._transport,
@@ -279,8 +288,6 @@ class ServiceBus:
 
         # Error dedupe for rungraph apply boundaries.
         self._rungraph_apply_error_once: set[str] = set()
-        # Generic error dedupe for high-frequency paths (watchers/fanout/loops).
-        self._error_once: set[str] = set()
         self._state_publish_seq = 0
         self._rungraph_apply_lock = asyncio.Lock()
         self._rungraph_apply_tasks: set[asyncio.Task[None]] = set()
@@ -321,8 +328,21 @@ class ServiceBus:
             self._monitor_record_callback_delivery = self._noop_record_callback_delivery
             self._monitor_record_buffer_pull_delivery = self._noop_record_buffer_pull_delivery
 
+        self._data_router = self._component_factory.create_data_router(
+            bus=self,
+            cross_publish_policy=cross_publish_policy,
+            data_delivery=mode,
+            input_max_buffers=self._data_input_max_buffers,
+            default_queue_size=self._data_input_default_queue_size,
+            output_debug_max_ports=self._data_output_debug_max_ports,
+            output_debug_history_size=self._data_output_debug_history_size,
+        )
+
         self._started = False
         self._closed = False
+
+    def _report_bus_error(self, key: str, message: str) -> None:
+        self.report_error(self.service_id, code="SERVICE_BUS_ERROR", message=message, severity="error", fingerprint=key)
 
     async def wait_terminate(self) -> None:
         await self._terminate_event.wait()

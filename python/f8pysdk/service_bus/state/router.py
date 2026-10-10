@@ -8,7 +8,7 @@ from ...generated import F8Edge, F8EdgeKindEnum, F8RuntimeGraph, F8StateAccess
 from ...f8_naming import ensure_token, parse_state_path_node_field
 from ...zenoh_naming import zenoh_key_to_state_path, zenoh_state_key
 from ...time_utils import now_ms
-from ...runtime_transport import SubscriptionHandle
+from ...runtime_transport import RuntimeTransport, SubscriptionHandle
 from ...codec import decode_obj
 from ...state import StateWriteContext, StateWriteError, StateWriteOrigin, StateWriteSource
 from ..internal.logging import log_error_once
@@ -32,8 +32,11 @@ _CROSS_STATE_INITIAL_SYNC_BUDGET_S = 0.30
 
 
 class StateRouter:
-    def __init__(self, bus: "ServiceBus", *, store: StateStore) -> None:
+    def __init__(self, bus: "ServiceBus", *, store: StateStore, transport: RuntimeTransport, debug: bool, sync_concurrency: int) -> None:
         self._bus = bus
+        self._transport = transport
+        self._debug = debug
+        self._sync_concurrency = sync_concurrency
         self._store = store
         self._intra_state_out: StateRouteTable = {}
         self._cross_state_in_by_key: CrossStateBindingTable = {}
@@ -84,7 +87,8 @@ class StateRouter:
             peer = str(edge.fromServiceId or "").strip()
             try:
                 peer = ensure_token(peer, label="fromServiceId")
-            except ValueError:
+            except ValueError as exc:
+                log_error_once(self._bus, key=f"invalid_state_peer:{peer}", message=f"invalid cross-state peer {peer}", exc=exc)
                 continue
 
             if not edge.toOperatorId or not edge.fromOperatorId:
@@ -118,7 +122,7 @@ class StateRouter:
                     await self.on_remote_state_retained(_peer, key, val, is_initial=False)
 
                 try:
-                    self._remote_state_watches[(peer, remote_key)] = await self._bus._transport.retained_watch(
+                    self._remote_state_watches[(peer, remote_key)] = await self._transport.retained_watch(
                         remote_key, cb=_cb, with_initial=True
                     )
                 except STATE_TRANSPORT_ERRORS as exc:
@@ -135,7 +139,7 @@ class StateRouter:
         if not initial_sync_jobs:
             return
 
-        concurrency = max(1, int(self._bus._state_sync_concurrency))
+        concurrency = max(1, int(self._sync_concurrency))
         sem = asyncio.Semaphore(concurrency)
         tasks: list[asyncio.Task[None]] = []
 
@@ -208,8 +212,10 @@ class StateRouter:
         self._remote_latest[(peer_service_id_s, remote_key)] = bytes(value)
         try:
             payload = decode_obj(value)
-        except ValueError:
-            payload = {}
+        except ValueError as exc:
+            log_error_once(self._bus, key=f"cross_state_decode:{peer_service_id_s}:{key_s}",
+                           message=f"invalid retained cross-state payload peer={peer_service_id_s} key={key_s}", exc=exc)
+            return
         if isinstance(payload, dict):
             payload_value = payload.get("value")
             ts_ms = coerce_inbound_ts_ms(extract_ts_field(payload), default=now_ms())
@@ -218,7 +224,7 @@ class StateRouter:
             ts_ms = now_ms()
         ts_i = int(ts_ms)
 
-        if self._bus._debug_state:
+        if self._debug:
             try:
                 value_text = repr(payload_value)
                 if len(value_text) > 160:
@@ -235,8 +241,8 @@ class StateRouter:
                         str(len(targets)),
                     )
                 )
-            except (TypeError, ValueError):
-                pass
+            except (TypeError, ValueError) as exc:
+                log_error_once(self._bus, key="cross_state_debug_repr", message="cross-state debug representation failed", exc=exc)
 
         for local_node_id, local_field, _edge in targets:
             local_node_id_s = str(local_node_id)
@@ -249,7 +255,7 @@ class StateRouter:
 
                 last_ts = self.last_remote_ts(node_id=local_node_id_s, field=local_field_s)
                 if not is_initial and last_ts is not None and ts_i < int(last_ts):
-                    if self._bus._debug_state:
+                    if self._debug:
                         print(
                             "state_debug[%s] cross_state_skip_old_remote node=%s field=%s ts_last=%s ts_remote=%s peer=%s key=%s"
                             % (
@@ -283,7 +289,7 @@ class StateRouter:
                 cached = self._store.cache_entry(node_id=local_node_id_s, field=local_field_s)
                 try:
                     if cached is not None and ts_i <= int(cached[1]) and cached[0] == value2:
-                        if self._bus._debug_state:
+                        if self._debug:
                             print(
                                 "state_debug[%s] cross_state_skip_duplicate to=%s.%s ts=%s peer=%s remote_key=%s"
                                 % (
@@ -296,11 +302,11 @@ class StateRouter:
                                 )
                             )
                         continue
-                except (TypeError, ValueError):
-                    pass
+                except (TypeError, ValueError) as exc:
+                    log_error_once(self._bus, key=f"cross_state_equality:{local_node_id_s}:{local_field_s}", message="cross-state duplicate comparison failed", exc=exc)
 
                 if access is None:
-                    if self._bus._debug_state:
+                    if self._debug:
                         print(
                             "state_debug[%s] cross_state_skip_unknown_field to=%s.%s peer=%s remote_key=%s"
                             % (

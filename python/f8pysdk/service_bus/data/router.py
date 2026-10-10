@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ...runtime_transport import SubscriptionHandle
+from ...runtime_transport import RuntimeTransport, SubscriptionHandle
 
 import asyncio
 import json
@@ -8,22 +8,41 @@ import logging
 from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any, Protocol
 
 import msgspec
 
-from ...capabilities import ComputableNode, DataReceivableNode
+from ...capabilities import ComputableNode, DataReceivableNode, StatefulNode
 from ...data import CrossPublishPolicy, DataDeliveryMode
 from ...generated import F8Edge, F8EdgeStrategyEnum
 from ...f8_naming import data_key
 from ...time_utils import now_ms
 from ...codec import decode_obj, dump_json, encode_obj
 from ..internal.cache import CappedOrderedDict
-from ..internal.logging import log_error_once
+from ..internal.logging import ErrorReportingHost, log_error_once
 from .emit import CrossPublishPlan, DataEmitOptions
 
-if TYPE_CHECKING:
-    from ..runtime import ServiceBus
+class DataRoutingHost(ErrorReportingHost, Protocol):
+    @property
+    def service_id(self) -> str: ...
+
+    @property
+    def active(self) -> bool: ...
+
+    def get_node(self, node_id: str) -> StatefulNode | None: ...
+
+
+@dataclass(frozen=True)
+class DataRouteMetrics:
+    record_emit: Callable[[str, str, int], None]
+    record_wait: Callable[[float], None]
+    record_input: Callable[[str, str, int], None]
+    record_drop: Callable[[int], None]
+    record_local_only_emit: Callable[[], None]
+    record_routed_cross_emit: Callable[[], None]
+    record_suppressed_cross_publish: Callable[[], None]
+    record_callback_delivery: Callable[[], None]
+    record_buffer_pull_delivery: Callable[[], None]
 
 
 log = logging.getLogger(__name__)
@@ -97,8 +116,10 @@ class OutputBuffer:
 class DataRouter:
     def __init__(
         self,
-        bus: "ServiceBus",
+        bus: DataRoutingHost,
         *,
+        transport: RuntimeTransport,
+        metrics: DataRouteMetrics,
         cross_publish_policy: CrossPublishPolicy,
         data_delivery: DataDeliveryMode,
         input_max_buffers: int,
@@ -107,6 +128,8 @@ class DataRouter:
         output_debug_history_size: int,
     ) -> None:
         self._bus = bus
+        self._transport = transport
+        self._metrics = metrics
         self._cross_publish_policy: CrossPublishPolicy = cross_publish_policy
         self._data_delivery: DataDeliveryMode = data_delivery
         self._default_queue_size = max(1, int(default_queue_size))
@@ -367,10 +390,7 @@ class DataRouter:
     def queue_depth(self) -> int:
         depth = 0
         for buf in list(self._inputs.values()):
-            try:
-                depth += int(len(buf.queue))
-            except (AttributeError, RuntimeError, TypeError):
-                continue
+            depth += len(buf.queue)
         if depth < 0:
             return 0
         return int(depth)
@@ -423,13 +443,13 @@ class DataRouter:
         options: DataEmitOptions | None = None,
     ) -> None:
         bus = self._bus
-        if not bus._active:
+        if not bus.active:
             return
         emit_options = options or DEFAULT_DATA_EMIT_OPTIONS
         ts = int(ts_ms or now_ms())
         from_node = str(node_id)
         from_port = str(port)
-        bus._monitor_record_emit(from_node, from_port, ts)
+        self._metrics.record_emit(from_node, from_port, ts)
         await self._route_emitted_value(
             from_node=from_node,
             from_port=from_port,
@@ -441,7 +461,7 @@ class DataRouter:
 
     async def pull_data(self, node_id: str, port: str, *, ctx_id: str | int | None = None) -> Any:
         bus = self._bus
-        if not bus._active:
+        if not bus.active:
             return None
         buf = self._ensure_input_buffer(to_node=node_id, to_port=port, edge=None)
         edge = buf.edge
@@ -464,11 +484,11 @@ class DataRouter:
             value, ts = buf.queue.popleft()
             if ts is not None:
                 wait_ms = float(max(0, now_ts - int(ts)))
-                bus._monitor_record_wait(wait_ms)
+                self._metrics.record_wait(wait_ms)
             buf.last_pulled_value = value
             buf.last_pulled_ts = int(ts) if ts is not None else now_ts
             buf.last_pulled_ctx_id = ctx_id
-            bus._monitor_record_buffer_pull_delivery()
+            self._metrics.record_buffer_pull_delivery()
             return value
 
         if not buf.queue and (ctx_id is None or buf.last_seen_ctx_id != ctx_id):
@@ -476,20 +496,16 @@ class DataRouter:
         value = buf.last_seen_value
         if buf.last_seen_ts is not None:
             wait_ms = float(max(0, now_ts - int(buf.last_seen_ts)))
-            bus._monitor_record_wait(wait_ms)
+            self._metrics.record_wait(wait_ms)
         buf.queue.clear()
         if value is not None:
             buf.last_pulled_value = value
             buf.last_pulled_ts = now_ts
             buf.last_pulled_ctx_id = ctx_id
-            bus._monitor_record_buffer_pull_delivery()
+            self._metrics.record_buffer_pull_delivery()
         return value
 
     async def ensure_input_available(self, *, node_id: str, port: str, ctx_id: str | int | None = None) -> None:
-        bus = self._bus
-        if not bus._graph:
-            return
-
         upstream = self._intra_data_in.get((node_id, port)) or ()
         if not upstream:
             return
@@ -512,7 +528,7 @@ class DataRouter:
         stack.add(key)
         try:
             for from_node, from_port, edge in self._intra_data_in.get(key) or ():
-                src = bus._nodes.get(from_node)
+                src = bus.get_node(from_node)
                 if src is None:
                     continue
                 try:
@@ -557,7 +573,7 @@ class DataRouter:
 
     async def on_cross_data_msg(self, key: str, payload: bytes) -> None:
         bus = self._bus
-        if not bus._active:
+        if not bus.active:
             return
         targets = self._cross_in_by_key.get(str(key).strip("/")) or []
         if not targets:
@@ -620,13 +636,12 @@ class DataRouter:
         edge: F8Edge | None,
         ctx_id: str | int | None,
     ) -> None:
-        bus = self._bus
         buf = self._ensure_input_buffer(to_node=to_node, to_port=to_port, edge=edge)
 
         buf.last_seen_value = value
         buf.last_seen_ts = int(ts_ms)
         buf.last_seen_ctx_id = ctx_id
-        bus._monitor_record_input(str(to_node), str(to_port), int(ts_ms))
+        self._metrics.record_input(str(to_node), str(to_port), int(ts_ms))
 
         buf.queue.append((value, int(ts_ms)))
         max_n = self._default_queue_size
@@ -642,10 +657,9 @@ class DataRouter:
                 buf.queue.popleft()
                 dropped_count += 1
         if dropped_count > 0:
-            bus._monitor_record_drop(int(dropped_count))
+            self._metrics.record_drop(int(dropped_count))
 
     async def sync_subscriptions(self, want_keys: set[str]) -> None:
-        bus = self._bus
         for key in list(self._route_subscriptions.keys()):
             if key in want_keys:
                 continue
@@ -664,7 +678,7 @@ class DataRouter:
             async def _cb(s: str, p: bytes) -> None:
                 await self.on_cross_data_msg(s, p)
 
-            handle = await bus._transport.subscribe(key, cb=_cb)
+            handle = await self._transport.subscribe(key, cb=_cb)
             self._route_subscriptions[key] = handle
 
     async def subscribe_key(
@@ -676,7 +690,7 @@ class DataRouter:
         key_s = str(key_expr or "").strip("/")
         if not key_s:
             raise ValueError("key_expr must be non-empty")
-        handle = await self._bus._transport.subscribe(key_s, cb=cb)
+        handle = await self._transport.subscribe(key_s, cb=cb)
         self._custom_subscriptions.append(handle)
         return handle
 
@@ -714,7 +728,7 @@ class DataRouter:
 
     def _enqueue_on_data_callback(self, *, to_node: str, to_port: str, value: Any, ts_ms: int) -> None:
         bus = self._bus
-        bus._monitor_record_callback_delivery()
+        self._metrics.record_callback_delivery()
         self._on_data_push_queue.append((to_node, to_port, value, int(ts_ms)))
         task = self._on_data_flush_task
         if task is None or task.done():
@@ -744,7 +758,7 @@ class DataRouter:
         force_buffer: bool = False,
     ) -> None:
         bus = self._bus
-        if not bus._active:
+        if not bus.active:
             return
         if force_buffer or self._buffers_data_locally():
             self.buffer_input(
@@ -790,8 +804,8 @@ class DataRouter:
         )
         if options.publish_cross_service and plan.will_publish:
             payload = encode_obj({"value": value, "ts": int(ts_ms)})
-            await self._bus._transport.publish(plan.key, payload)
-            self._bus._monitor_record_routed_cross_emit()
+            await self._transport.publish(plan.key, payload)
+            self._metrics.record_routed_cross_emit()
             return delivered
         self._record_skipped_cross_publish(plan=plan, publish_enabled=options.publish_cross_service)
         return delivered
@@ -859,15 +873,14 @@ class DataRouter:
         return delivered
 
     def _record_skipped_cross_publish(self, *, plan: CrossPublishPlan, publish_enabled: bool) -> None:
-        bus = self._bus
         if publish_enabled:
             if plan.decision == "suppressed":
-                bus._monitor_record_suppressed_cross_publish()
+                self._metrics.record_suppressed_cross_publish()
             elif plan.decision == "local_only":
-                bus._monitor_record_local_only_emit()
+                self._metrics.record_local_only_emit()
             return
         if plan.decision in ("publish", "suppressed"):
-            bus._monitor_record_suppressed_cross_publish()
+            self._metrics.record_suppressed_cross_publish()
 
     def _cross_publish_plan(self, *, node_id: str, port: str) -> CrossPublishPlan:
         if self._cross_publish_policy == "none":
@@ -887,7 +900,7 @@ class DataRouter:
     async def _flush_on_data_push_queue(self) -> None:
         try:
             while self._on_data_push_queue:
-                if not self._bus._active:
+                if not self._bus.active:
                     self._on_data_push_queue.clear()
                     return
                 batch: list[tuple[str, str, Any, int]] = []
@@ -897,9 +910,9 @@ class DataRouter:
                 for node_id, port, value, ts_ms in batch:
                     coalesced[(node_id, port)] = (value, int(ts_ms))
                 for (node_id, port), (value, ts_ms) in coalesced.items():
-                    if not self._bus._active:
+                    if not self._bus.active:
                         return
-                    node = self._bus._nodes.get(node_id)
+                    node = self._bus.get_node(node_id)
                     if node is None or not isinstance(node, DataReceivableNode):
                         continue
                     try:

@@ -1,44 +1,34 @@
-"""Internal logging helpers owned by `service_bus`."""
+"""Deduplicated, actionable runtime error reporting."""
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from ..runtime import ServiceBus
-
+from collections.abc import Callable
+from typing import Protocol
 
 log = logging.getLogger(__name__)
 
 
-def log_error_once(
-    bus: "ServiceBus",
-    *,
-    key: str,
-    message: str,
-    exc: BaseException | None = None,
-) -> None:
-    """
-    Log an error once per bus instance to prevent high-frequency log spam.
-    """
-    if key in bus._error_once:
-        return
-    bus._error_once.add(key)
-    if bus._monitor_collector.enabled:
-        error_message = str(message)
-        if exc is not None:
-            error_message = f"{message}: {type(exc).__name__}: {exc}"
-        bus.report_error(
-            str(bus.service_id),
-            code="SERVICE_BUS_ERROR",
-            message=error_message,
-            severity="error",
-            fingerprint=str(key),
-        )
-    if exc is None:
-        log.error("service_bus[%s] %s", bus.service_id, message)
-        return
-    log.error("service_bus[%s] %s", bus.service_id, message, exc_info=exc)
+class ErrorReporter:
+    def __init__(self, *, service_id: str, report: Callable[[str, str], None]) -> None:
+        self._service_id = service_id
+        self._report = report
+        self._seen: set[str] = set()
+
+    def report(self, *, key: str, message: str, exc: BaseException | None = None) -> None:
+        if key in self._seen:
+            return
+        self._seen.add(key)
+        detail = message if exc is None else f"{message}: {type(exc).__name__}: {exc}"
+        self._report(key, detail)
+        log.error("service_bus[%s] %s", self._service_id, message, exc_info=exc)
 
 
-__all__ = ["log_error_once"]
+class ErrorReportingHost(Protocol):
+    error_reporter: ErrorReporter
+
+
+def log_error_once(bus: ErrorReportingHost, *, key: str, message: str, exc: BaseException | None = None) -> None:
+    bus.error_reporter.report(key=key, message=message, exc=exc)
+
+
+__all__ = ["ErrorReporter", "ErrorReportingHost", "log_error_once"]
