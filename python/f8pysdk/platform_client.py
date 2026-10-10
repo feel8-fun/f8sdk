@@ -14,7 +14,7 @@ from .platform_errors import ConflictError, InvalidRequestError, NotFoundError, 
 from .platform_spec import PlatformInventory, ProcessLog, ServiceProcessStatus, ServiceStartRequest
 from .application_spec import ApplicationEndpoint
 from .tool_spec import CapabilityResource, ResourceContent, ToolJob, ToolRunRequest, ToolView
-from .management_job import ManagementJob, ManagementJobRequest, ManagementJobLog
+from .management_job import ManagementJob, ManagementJobRequest, ManagementJobLog, ManagementJobsClearRequest
 
 T = TypeVar('T')
 
@@ -102,6 +102,10 @@ class PlatformJobs:
 
     def list(self) -> tuple[ManagementJob, ...]:
         return self.client.read('GET', '/api/management-jobs', tuple[ManagementJob, ...])
+
+    def clear_completed(self, identifiers: tuple[str, ...]) -> tuple[ManagementJob, ...]:
+        return self.client.read('POST', '/api/management-jobs/clear-completed', tuple[ManagementJob, ...],
+                                payload=ManagementJobsClearRequest(job_ids=identifiers))
 
     def submit(self, request: ManagementJobRequest) -> ManagementJob:
         return self.client.read('POST', '/api/management-jobs', ManagementJob, payload=request)

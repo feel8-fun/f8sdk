@@ -11,6 +11,7 @@ ManagementAction = Literal[
     'import-extension', 'install-extension', 'uninstall-extension',
     'enable-extension', 'disable-extension', 'prepare-environment',
     'remove-environment', 'clean-unused-environments', 'start-source', 'start-application',
+    'restart-source', 'restart-application',
     'import-application', 'prepare-application', 'select-application', 'deselect-application',
     'update-application', 'uninstall-application',
 ]
@@ -40,3 +41,7 @@ class ManagementJob(msgspec.Struct, frozen=True, kw_only=True, rename='camel'):
 
 class ManagementJobLog(msgspec.Struct, frozen=True, kw_only=True, rename='camel'):
     log: str
+
+
+class ManagementJobsClearRequest(msgspec.Struct, frozen=True, kw_only=True, rename='camel', forbid_unknown_fields=True):
+    job_ids: tuple[str, ...]

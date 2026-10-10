@@ -9,7 +9,7 @@ from .extension_status import (
 )
 from .platform_spec import ApplicationStatus, SourceApplicationStatus, ApplicationOperation
 from .platform_api import ImportApplication, ApplicationVersion
-from .management_job import ManagementJob, ManagementJobRequest, ManagementJobLog
+from .management_job import ManagementJob, ManagementJobRequest, ManagementJobLog, ManagementJobsClearRequest
 from .tool_spec import ToolView, ToolRunRequest, ToolJob, CapabilityResource, ResourceContent
 
 
@@ -26,6 +26,7 @@ class RouteContract:
 MANAGEMENT_ROUTES = (
     RouteContract('get', '/api/management-jobs', None, tuple[ManagementJob, ...]),
     RouteContract('post', '/api/management-jobs', ManagementJobRequest, ManagementJob, 202),
+    RouteContract('post', '/api/management-jobs/clear-completed', ManagementJobsClearRequest, tuple[ManagementJob, ...]),
     RouteContract('get', '/api/management-jobs/{job_id}', None, ManagementJob),
     RouteContract('get', '/api/management-jobs/{job_id}/logs', None, ManagementJobLog),
     RouteContract('post', '/api/management-jobs/{job_id}/cancel', None, ManagementJob, 202),
@@ -38,9 +39,11 @@ MANAGEMENT_ROUTES = (
     RouteContract('post', '/api/applications/{extension_id}/uninstall', ApplicationVersion, ManagementJob, 202),
     RouteContract('post', '/api/applications/{extension_id}/start', None, ManagementJob, 202),
     RouteContract('post', '/api/applications/{extension_id}/stop', None, ApplicationOperation, 202),
+    RouteContract('post', '/api/applications/{extension_id}/restart', None, ManagementJob, 202),
     RouteContract('get', '/api/source-applications', None, tuple[SourceApplicationStatus, ...]),
     RouteContract('post', '/api/source-applications/{extension_id}/start', None, ManagementJob, 202),
     RouteContract('post', '/api/source-applications/{extension_id}/stop', None, ApplicationOperation, 202),
+    RouteContract('post', '/api/source-applications/{extension_id}/restart', None, ManagementJob, 202),
     RouteContract('get', '/api/extension-tools', None, tuple[ToolView, ...]),
     RouteContract('post', '/api/extension-tools/{extension_id}/{tool_id}/run', ToolRunRequest, ToolJob, 202),
     RouteContract('get', '/api/tool-jobs', None, tuple[ToolJob, ...]),
