@@ -33,7 +33,7 @@ from .internal.command import CommandGateway, CommandInvocation, CommandInvokeOp
 from ..monitoring import MonitorCollector, MonitorCollectorConfig
 from .state.pipeline import publish_state as _publish_state_impl
 from .state.router import StateRouter
-from .state.store import StateStore
+from .state.store import RetainedStateReader, StateStore
 from .workflow.lifecycle import set_active as _set_active_impl
 from .workflow.lifecycle import start as _start_impl
 from .workflow.lifecycle import stop as _stop_impl
@@ -94,7 +94,9 @@ class ServiceBusComponentFactory(Protocol):
     def create_state_store(
         self,
         *,
-        bus: "ServiceBus",
+        service_id: str,
+        reader: RetainedStateReader,
+        debug: bool,
         cache_max_entries: int,
     ) -> StateStore: ...
 
@@ -146,10 +148,12 @@ class DefaultServiceBusComponentFactory:
     def create_state_store(
         self,
         *,
-        bus: "ServiceBus",
+        service_id: str,
+        reader: RetainedStateReader,
+        debug: bool,
         cache_max_entries: int,
     ) -> StateStore:
-        return StateStore(bus, cache_max_entries=cache_max_entries)
+        return StateStore(service_id=service_id, reader=reader, debug=debug, cache_max_entries=cache_max_entries)
 
     def create_state_router(
         self,
@@ -262,7 +266,9 @@ class ServiceBus:
             output_debug_history_size=self._data_output_debug_history_size,
         )
         self._state_store = self._component_factory.create_state_store(
-            bus=self,
+            service_id=self.service_id,
+            reader=self._transport,
+            debug=self._debug_state,
             cache_max_entries=self._state_cache_max_entries,
         )
         self._state_router = self._component_factory.create_state_router(bus=self, store=self._state_store)

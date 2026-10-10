@@ -11,7 +11,7 @@ class F8Sdk(ConanFile):
     package_type = "library"
     settings = "os", "compiler", "build_type", "arch"
     generators = "CMakeDeps", "CMakeToolchain"
-    exports_sources = "CMakeLists.txt", "cpp/*", "cmake/*", "schemas/*", "tools/*", "python/*", "tests/*", "LICENSE"
+    exports_sources = "CMakeLists.txt", "cpp/*", "cmake/*", "schemas/*", "f8sdk_codegen/*", "python/*", "tests/*", "LICENSE"
     options = {"shared": [True, False], "fPIC": [True, False]}
     default_options = {"shared": False, "fPIC": True}
 

@@ -7,7 +7,7 @@ It builds without Studio or any extension checkout.
 - `python/`: the `f8pysdk` wheel and Python tests.
 - `cpp/`: the installed `f8cppsdk` CMake package and optional minimal example.
 - `schemas/`: canonical service JSON, binary stream and runtime contracts.
-- `tools/`: explicit generators; generated models are checked into Git.
+- `f8sdk_codegen/`: explicit generators; generated models are checked into Git.
 - `tests/`: native SDK tests and shared cross-language fixtures.
 
 Both SDKs currently use version `0.1.0`. Update both package manifests and the

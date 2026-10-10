@@ -5,6 +5,8 @@ Callers supply their own lifecycle gate through ``read_enabled``.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import asyncio
 import logging
 import time
@@ -52,6 +54,7 @@ class VideoLatestSubscription:
     task: asyncio.Task[object] | None = None
     latest_packet: dict[str, Any] | None = None
     last_frame_id: int = 0
+    last_stream_epoch: str | None = None
     last_error_sig: str | None = None
     last_error_ts_ms: int = 0
     error_count: int = 0
@@ -79,9 +82,10 @@ def _status_metadata(sub: VideoLatestSubscription) -> dict[str, Any]:
 
 class VideoLatestPacketCodec:
     @staticmethod
-    def header_to_dict(frame: LatestVideoFrame) -> dict[str, int]:
+    def header_to_dict(frame: LatestVideoFrame) -> dict[str, int | str]:
         return {
             "frameId": int(frame.frame_id),
+            "streamEpoch": frame.stream_epoch,
             "tsMs": int(frame.ts_ms),
             "width": int(frame.width),
             "height": int(frame.height),
@@ -105,7 +109,7 @@ class VideoLatestPacketCodec:
             compact[dst_off : dst_off + row_bytes] = raw[src_off : src_off + row_bytes]
         return bytes(compact)
 
-    def decode_payload(self, *, header: dict[str, int], raw: bytes, decode_mode: str) -> dict[str, Any] | None:
+    def decode_payload(self, *, header: Mapping[str, int | str], raw: bytes, decode_mode: str) -> dict[str, Any] | None:
         if decode_mode != "auto":
             return None
         width = int(header.get("width") or 0)
@@ -324,7 +328,8 @@ class VideoLatestSubscriptions:
         frame_id = int(frame.frame_id)
         if frame_id <= 0:
             return False
-        if frame_id == int(sub.last_frame_id) and sub.latest_packet is not None:
+        if (frame.stream_epoch == sub.last_stream_epoch and frame_id == sub.last_frame_id
+                and sub.latest_packet is not None):
             return False
 
         frame_bytes = int(frame.frame_bytes)
@@ -345,6 +350,7 @@ class VideoLatestSubscriptions:
             },
         }
         sub.last_frame_id = frame_id
+        sub.last_stream_epoch = frame.stream_epoch
         return True
 
     async def _run_subscription(self, key: str) -> None:

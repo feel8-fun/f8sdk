@@ -104,12 +104,14 @@ def unwrap_json_value(value: Any) -> Any:
         return value
 
 
-def parse_bool(value: Any, *, empty_as_false: bool = False) -> bool | None:
+def parse_bool(value: Any, *, empty_as_false: bool = False, strict_numeric: bool = False) -> bool | None:
     """Best-effort bool parse. Return None when the input is not interpretable."""
     normalized = unwrap_json_value(value)
     if isinstance(normalized, bool):
         return normalized
     if isinstance(normalized, (int, float)):
+        if strict_numeric and (not isinstance(normalized, int) or normalized not in (0, 1)):
+            return None
         return bool(normalized)
     if normalized is None:
         return False if empty_as_false else None

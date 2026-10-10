@@ -1,4 +1,5 @@
 add_executable(f8cppsdk_tests
+  test_bgra_frame_sink.cpp
   test_main_thread_queue.cpp
   test_protocol_models_parse.cpp
   test_cpp_runtime_host_exec.cpp

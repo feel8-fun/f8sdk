@@ -95,3 +95,18 @@ def test_repeated_transport_errors_are_counted_and_log_traceback_once(caplog: py
     assert sub.error_count == 2
     assert len(caplog.records) == 1
     assert caplog.records[0].exc_info is not None
+
+
+def test_same_frame_id_is_new_after_publisher_restart() -> None:
+    subscriptions = Subscriptions()
+    sub = VideoLatestSubscription(key="video", stream_key="test/video", decode_mode="none")
+    first = LatestVideoFrame(width=1, height=1, pitch=4, fmt=VIDEO_FORMAT_BGRA32,
+                             frame_id=1, ts_ms=1, payload=memoryview(b"1234"), stream_epoch="a" * 32)
+    restarted = LatestVideoFrame(width=1, height=1, pitch=4, fmt=VIDEO_FORMAT_BGRA32,
+                                 frame_id=1, ts_ms=2, payload=memoryview(b"5678"), stream_epoch="b" * 32)
+    assert subscriptions._update_latest_packet(sub, first)
+    assert not subscriptions._update_latest_packet(sub, first)
+    assert subscriptions._update_latest_packet(sub, restarted)
+    assert sub.latest_packet is not None
+    assert sub.latest_packet["raw"] == b"5678"
+    assert sub.latest_packet["header"]["streamEpoch"] == "b" * 32

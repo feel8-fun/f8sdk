@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any, Protocol
 
 from ...generated import F8StateAccess
 from ...f8_naming import ensure_token
@@ -10,13 +10,16 @@ from ...zenoh_naming import zenoh_state_key
 from ..internal.cache import CappedOrderedDict
 from .helpers import coerce_inbound_ts_ms, extract_ts_field
 
-if TYPE_CHECKING:
-    from ..runtime import ServiceBus
+class RetainedStateReader(Protocol):
+    async def retained_get(self, key: str) -> bytes | None: ...
 
 
 class StateStore:
-    def __init__(self, bus: "ServiceBus", *, cache_max_entries: int) -> None:
-        self._bus = bus
+    def __init__(self, *, service_id: str, reader: RetainedStateReader,
+                 debug: bool = False, cache_max_entries: int) -> None:
+        self._service_id = service_id
+        self._reader = reader
+        self._debug = debug
         self._cache: CappedOrderedDict[tuple[str, str], tuple[Any, int]] = CappedOrderedDict(
             max_entries=max(0, int(cache_max_entries))
         )
@@ -56,13 +59,13 @@ class StateStore:
         if cached is not None:
             return StateRead(found=True, value=cached[0], ts_ms=cached[1])
 
-        key = zenoh_state_key(self._bus.service_id, node_id=node_id_s, field=field_s)
-        raw = await self._bus._transport.retained_get(key)
+        key = zenoh_state_key(self._service_id, node_id=node_id_s, field=field_s)
+        raw = await self._reader.retained_get(key)
         if not raw:
-            if self._bus._debug_state:
+            if self._debug:
                 print(
                     "state_debug[%s] get_state miss node=%s field=%s"
-                    % (self._bus.service_id, node_id_s, field_s)
+                    % (self._service_id, node_id_s, field_s)
                 )
             return StateRead(found=False, value=None, ts_ms=None)
 
@@ -76,10 +79,10 @@ class StateStore:
             value = payload.get("value")
             ts_ms_value = coerce_inbound_ts_ms(extract_ts_field(payload), default=0)
             self.cache_value(node_id=node_id_s, field=field_s, value=value, ts_ms=ts_ms_value)
-            if self._bus._debug_state:
+            if self._debug:
                 print(
                     "state_debug[%s] get_state kv node=%s field=%s ts=%s"
-                    % (self._bus.service_id, node_id_s, field_s, str(ts_ms_value))
+                    % (self._service_id, node_id_s, field_s, str(ts_ms_value))
                 )
             return StateRead(found=True, value=value, ts_ms=ts_ms_value)
 

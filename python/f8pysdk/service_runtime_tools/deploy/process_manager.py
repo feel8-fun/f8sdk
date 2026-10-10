@@ -16,6 +16,7 @@ from typing import Any, Literal
 
 import msgspec
 
+from ...process_control import wait_for_process_exit
 from ...bus import BusBackend
 from .._internal.error_reporting import ExceptionLogOnce, fingerprint_exception
 from ..inventory.catalog import ServiceCatalog
@@ -419,10 +420,7 @@ class ServiceProcessManager:
 
     def _wait_for_exit(self, *, service_id: str, proc: subprocess.Popen[Any], timeout_s: float) -> bool:
         try:
-            proc.wait(timeout=max(0.0, float(timeout_s)))
-            return True
-        except subprocess.TimeoutExpired:
-            return False
+            return wait_for_process_exit(proc, timeout_s=timeout_s)
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             logger.debug("Service process wait failed (service_id=%s)", service_id, exc_info=exc)
             return False

@@ -321,3 +321,42 @@ TEST(CppServiceHost, CreatesRecreatesAndRemovesNodes) {
   ASSERT_TRUE(host.apply_rungraph(graph, code, message)) << message;
   EXPECT_EQ(host.get_node("n1"), nullptr);
 }
+
+TEST(CppServiceHost, FailedDeploymentKeepsExistingNodes) {
+  f8::cppsdk::ServiceBus::Config cfg;
+  cfg.service_id = "svc";
+  cfg.service_class = "f8.test";
+  cfg.bus_backend = f8::cppsdk::BusBackend::kMem;
+  f8::cppsdk::ServiceBus bus(cfg);
+  f8::cppsdk::RuntimeNodeRegistry registry;
+  registry.register_service_spec(json{{"serviceClass", "f8.test"}});
+  registry.register_operator_factory("f8.test", "constant",
+      [](const std::string& id, const f8::cppsdk::generated::F8RuntimeNode&, const json&) {
+        return std::make_unique<ConstantNode>(id, 42);
+      });
+  registry.register_operator_factory("f8.test", "broken",
+      [](const std::string&, const f8::cppsdk::generated::F8RuntimeNode&, const json&) -> std::unique_ptr<f8::cppsdk::OperatorNode> {
+        throw std::runtime_error("invalid operator configuration");
+      });
+  f8::cppsdk::ServiceHost host(bus, registry, "f8.test");
+  json graph{{"graphId", "g"}, {"revision", "r"},
+             {"nodes", json::array({runtime_node("svc", "live", "constant")})}, {"edges", json::array()}};
+  std::string code, message;
+  ASSERT_TRUE(host.apply_rungraph(graph, code, message)) << message;
+  auto* live = host.get_node("live");
+  ASSERT_NE(live, nullptr);
+  graph["nodes"] = json::array({runtime_node("svc", "new", "constant"), runtime_node("svc", "pending", "pending")});
+  EXPECT_FALSE(host.apply_rungraph(graph, code, message));
+  EXPECT_EQ(code, "OPERATOR_NOT_IMPLEMENTED");
+  EXPECT_NE(message.find("pending"), std::string::npos);
+  EXPECT_EQ(host.get_node("live"), live);
+  EXPECT_EQ(host.get_node("new"), nullptr);
+  graph["nodes"] = json::array({runtime_node("svc", "live", "pending")});
+  EXPECT_FALSE(host.apply_rungraph(graph, code, message));
+  EXPECT_EQ(code, "OPERATOR_NOT_IMPLEMENTED");
+  EXPECT_EQ(host.get_node("live"), live);
+  graph["nodes"] = json::array({runtime_node("svc", "broken", "broken")});
+  EXPECT_FALSE(host.apply_rungraph(graph, code, message));
+  EXPECT_EQ(code, "RUNTIME_NODE_CREATION_FAILED");
+  EXPECT_EQ(host.get_node("live"), live);
+}

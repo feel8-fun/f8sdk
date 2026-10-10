@@ -2,6 +2,7 @@ add_library(f8cppsdk
   src/describe_schema.cpp
   src/exec_flow_executor.cpp
   src/service_bus.cpp
+  src/bgra_frame_sink.cpp
   src/service_host.cpp
   src/runtime_node.cpp
   src/runtime_node_registry.cpp
@@ -37,11 +38,11 @@ set(F8CPP_PROTOCOL_MODELS_OUT
 add_custom_command(
   OUTPUT ${F8CPP_PROTOCOL_MODELS_OUT}
   COMMAND ${Python3_EXECUTABLE}
-          ${F8SDK_ROOT}/tools/gen_cpp_protocol_models.py
+          ${F8SDK_ROOT}/f8sdk_codegen/gen_cpp_protocol_models.py
           --protocol ${F8SDK_ROOT}/schemas/protocol.yml
           --out ${F8CPP_PROTOCOL_MODELS_OUT}
   DEPENDS
-    ${F8SDK_ROOT}/tools/gen_cpp_protocol_models.py
+    ${F8SDK_ROOT}/f8sdk_codegen/gen_cpp_protocol_models.py
     ${F8SDK_ROOT}/schemas/protocol.yml
   VERBATIM
 )
@@ -50,9 +51,9 @@ add_dependencies(f8cppsdk f8cppsdk_codegen_protocol_models)
 
 # Checked-in stream codecs are shared with Python; fail on schema drift.
 add_custom_target(f8cppsdk_check_stream_wire
-  COMMAND ${Python3_EXECUTABLE} ${F8SDK_ROOT}/tools/generate_stream_wire.py --check
-  COMMAND ${Python3_EXECUTABLE} ${F8SDK_ROOT}/tools/generate_runtime_keys.py --check
-  COMMAND ${Python3_EXECUTABLE} ${F8SDK_ROOT}/tools/generate_runtime_policy.py --check
+  COMMAND ${Python3_EXECUTABLE} ${F8SDK_ROOT}/f8sdk_codegen/generate_stream_wire.py --check
+  COMMAND ${Python3_EXECUTABLE} ${F8SDK_ROOT}/f8sdk_codegen/generate_runtime_keys.py --check
+  COMMAND ${Python3_EXECUTABLE} ${F8SDK_ROOT}/f8sdk_codegen/generate_runtime_policy.py --check
   VERBATIM
 )
 add_dependencies(f8cppsdk f8cppsdk_check_stream_wire)

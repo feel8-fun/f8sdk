@@ -58,6 +58,7 @@ class ServiceHost final : public LifecycleNode,
   bool started_ = false;
   std::unique_ptr<RuntimeNode> service_node_;
   std::unordered_map<std::string, std::unique_ptr<OperatorNode>> operator_nodes_;
+  std::unordered_map<std::string, std::string> operator_classes_;
 };
 
 }  // namespace f8::cppsdk

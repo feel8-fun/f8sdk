@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tools.gen_cpp_protocol_models import Schema, _gen_header
+from f8sdk_codegen.gen_cpp_protocol_models import Schema, _gen_header
 
 
 def test_cpp_generator_rejects_unsupported_shape_instead_of_json_fallback() -> None:

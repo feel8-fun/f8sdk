@@ -41,6 +41,7 @@ void ServiceHost::stop() {
     if (item.second) close_node(*item.second);
   }
   operator_nodes_.clear();
+  operator_classes_.clear();
   if (service_node_) {
     close_node(*service_node_);
     service_node_.reset();
@@ -61,7 +62,6 @@ bool ServiceHost::apply_rungraph(const nlohmann::json& graph_obj, std::string& e
     return false;
   }
 
-  ensure_service_node();
   const std::string service_id = bus_.config().service_id;
 
   generated::F8RuntimeNode service_snapshot;
@@ -82,52 +82,64 @@ bool ServiceHost::apply_rungraph(const nlohmann::json& graph_obj, std::string& e
     wanted.push_back(node);
   }
 
-  if (has_service_snapshot && service_node_) {
-    service_node_->set_data_in_ports(data_port_names(service_snapshot.dataInPorts));
-    service_node_->set_data_out_ports(data_port_names(service_snapshot.dataOutPorts));
-    service_node_->set_state_fields(state_field_names(service_snapshot.stateFields));
-  }
-
+  // Build every replacement before changing the live graph. A missing or failing
+  // factory must leave the previous nodes and service port declarations intact.
   std::unordered_set<std::string> wanted_ids;
+  std::unordered_map<std::string, std::unique_ptr<OperatorNode>> staged_nodes;
   for (const auto& node : wanted) {
-    wanted_ids.insert(node.nodeId);
-  }
-  for (auto it = operator_nodes_.begin(); it != operator_nodes_.end();) {
-    if (wanted_ids.find(it->first) != wanted_ids.end()) {
-      ++it;
+    if (!wanted_ids.insert(node.nodeId).second) {
+      error_code = "INVALID_RUNGRAPH";
+      error_message = "duplicate runtime node: " + node.nodeId;
+      return false;
+    }
+    const auto existing_it = operator_nodes_.find(node.nodeId);
+    if (existing_it != operator_nodes_.end() && existing_it->second &&
+        operator_classes_.at(node.nodeId) == node.operatorClass.value_or("") &&
+        !needs_recreate(*existing_it->second, node)) {
       continue;
     }
-    if (it->second) close_node(*it->second);
-    it = operator_nodes_.erase(it);
-  }
-
-  for (const auto& node : wanted) {
-    const std::string node_id = node.nodeId;
-    auto existing_it = operator_nodes_.find(node_id);
-    if (existing_it != operator_nodes_.end()) {
-      if (existing_it->second && needs_recreate(*existing_it->second, node)) {
-        close_node(*existing_it->second);
-        operator_nodes_.erase(existing_it);
-      } else {
-        continue;
-      }
-    }
-
     try {
-      auto runtime_node = registry_.create_operator_node(node_id, node, initial_state(node));
+      auto runtime_node = registry_.create_operator_node(node.nodeId, node, initial_state(node));
       runtime_node->set_data_in_ports(data_port_names(node.dataInPorts));
       runtime_node->set_data_out_ports(data_port_names(node.dataOutPorts));
       runtime_node->set_state_fields(state_field_names(node.stateFields));
       runtime_node->set_exec_in_ports(string_vector(node.execInPorts));
       runtime_node->set_exec_out_ports(string_vector(node.execOutPorts));
-      runtime_node->attach(&bus_);
-      operator_nodes_[node_id] = std::move(runtime_node);
+      staged_nodes.emplace(node.nodeId, std::move(runtime_node));
     } catch (const OperatorFactoryNotRegistered& exc) {
-      spdlog::error("missing C++ operator runtime factory nodeId={} operatorClass={}: {}", node_id,
-                    node.operatorClass.value_or(""), exc.what());
+      error_code = "OPERATOR_NOT_IMPLEMENTED";
+      error_message = "node " + node.nodeId + ": " + exc.what();
+      spdlog::error("rungraph rejected: {}", error_message);
+      return false;
     } catch (const std::exception& exc) {
-      spdlog::error("failed to create C++ runtime node nodeId={}: {}", node_id, exc.what());
+      error_code = "RUNTIME_NODE_CREATION_FAILED";
+      error_message = "node " + node.nodeId + ": " + exc.what();
+      spdlog::error("rungraph rejected: {}", error_message);
+      return false;
     }
+  }
+
+  ensure_service_node();
+  if (has_service_snapshot && service_node_) {
+    service_node_->set_data_in_ports(data_port_names(service_snapshot.dataInPorts));
+    service_node_->set_data_out_ports(data_port_names(service_snapshot.dataOutPorts));
+    service_node_->set_state_fields(state_field_names(service_snapshot.stateFields));
+  }
+  for (auto it = operator_nodes_.begin(); it != operator_nodes_.end();) {
+    if (wanted_ids.find(it->first) != wanted_ids.end() && staged_nodes.find(it->first) == staged_nodes.end()) {
+      ++it;
+      continue;
+    }
+    if (it->second) close_node(*it->second);
+    operator_classes_.erase(it->first);
+    it = operator_nodes_.erase(it);
+  }
+  for (const auto& node : wanted) {
+    operator_classes_[node.nodeId] = node.operatorClass.value_or("");
+  }
+  for (auto& item : staged_nodes) {
+    item.second->attach(&bus_);
+    operator_nodes_.emplace(item.first, std::move(item.second));
   }
 
   return true;

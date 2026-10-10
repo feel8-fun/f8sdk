@@ -37,7 +37,7 @@ Slice D notes:
 - `state/store.py` is now the canonical owner for:
   - local state cache
   - per-node state access map
-  - RuntimeTransport-backed state read path
+  - retained state reads through an injected `RetainedStateReader`; no dependency on ServiceBus internals
 - `state/router.py` is now the canonical owner for:
   - intra-service state-edge fanout tables
   - cross-service state bindings
@@ -155,7 +155,7 @@ Current command note:
 The old deep `service_bus.*` compatibility shims have now been removed from the
 repo. New code should use stable SDK modules and owner packages directly:
 
-- public bus/runtime entrypoints: `f8pysdk.service_bus`, `f8pysdk.app`
+- public bus/runtime entrypoints: `f8pysdk.bus`, `f8pysdk.app`
 - public protocol/type modules: `f8pysdk.command`, `f8pysdk.data`, `f8pysdk.state`
 - stable helpers: `f8pysdk.codec`, `f8pysdk.testing`, `f8pysdk.monitoring`
 - canonical service-bus owners: `f8pysdk.service_bus.runtime`,
@@ -178,7 +178,7 @@ Stable top-level modules introduced during public API cleanup:
 - `f8pysdk.monitoring`
 - `f8pysdk.nodes`
 - `f8pysdk.registry`
-- `f8pysdk.transport`
+- `f8pysdk.runtime_transport`
 
 Explicit internal boundary introduced during public API cleanup:
 
@@ -190,7 +190,7 @@ Explicit internal boundary introduced during public API cleanup:
 - `f8pysdk.service_bus.state.*` for state-runtime owner modules that should not
   sit at the public `service_bus` root
 - `runtime.py` and `config.py` now hold the canonical owner paths behind the
-  stable `f8pysdk.service_bus` entrypoint
+  stable `f8pysdk.bus` entrypoint
 - older thin API facades under `service_bus.api.*` and root thin state facade
   modules have been removed
 - internal publish controls live in `state.options`

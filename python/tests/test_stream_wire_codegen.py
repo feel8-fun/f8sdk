@@ -14,10 +14,10 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_generated_stream_files_are_current() -> None:
-    from tools.generate_stream_wire import generate
+    from f8sdk_codegen.generate_stream_wire import generate
 
-    from tools.generate_runtime_keys import generate as generate_keys
-    from tools.generate_runtime_policy import generate as generate_policy
+    from f8sdk_codegen.generate_runtime_keys import generate as generate_keys
+    from f8sdk_codegen.generate_runtime_policy import generate as generate_policy
 
     for path, content in (generate() | generate_keys() | generate_policy()).items():
         assert path.read_text() == content, f"Regenerate {path}"
